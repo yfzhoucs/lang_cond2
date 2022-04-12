@@ -376,9 +376,10 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                 writer.add_scalar('train_split error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
 
 
-def main(writer, name, batch_size=96):
+def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
-    data_root_path = r'/share/yzhou298'
+    # data_root_path = r'/share/yzhou298'
+    data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -398,31 +399,31 @@ def main(writer, name, batch_size=96):
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120)
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=True, length_total=36)
+    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=True, length_total=120)
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_train_split = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=True, length_total=36)
+    dataset_train_split = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=True, length_total=120)
     data_loader_train_split = torch.utils.data.DataLoader(dataset_train_split, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
     
-    dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=36)
+    dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120)
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=36)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_train_split_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=False, length_total=36)
+    dataset_train_split_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=False, length_total=120)
     data_loader_train_split_dmp = torch.utils.data.DataLoader(dataset_train_split_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=2,
+                                          shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
 
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.MSELoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
 
@@ -448,6 +449,6 @@ def main(writer, name, batch_size=96):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgbd-mse-displacement'
+    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

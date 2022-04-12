@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.utils.data as data
 import torch
 from torch.optim.lr_scheduler import StepLR
+import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 import time
@@ -27,6 +28,9 @@ def pixel_position_to_attn_index(pixel_position, attn_map_offset=1):
     index = torch.tensor(index).to(device).unsqueeze(1)
     return index
 
+# https://stackoverflow.com/questions/68609414/how-to-calculate-correct-cross-entropy-between-2-tensors-in-pytorch-when-target
+def cross_entropy(pred, target, eps=1e-5):
+    return torch.mean(-torch.sum(target * torch.log(pred + eps), 1))
 
 
 def train(writer, name, epoch_idx, data_loader, model, 
@@ -53,31 +57,6 @@ def train(writer, name, epoch_idx, data_loader, model,
         joint_angles_traj = joint_angles_traj.to(device)
         ee_traj = torch.cat((ee_traj, joint_angles_traj[:, -1:, :]), axis=1)
 
-        # print(img.shape)
-
-        # mean = np.array([ 2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0])
-        # std = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1]) ** (1/2)
-        # print(ee_pos[0].detach().cpu().numpy() * std + mean)
-        # print(target[0])
-        # print(target_xy[0])
-        # fig = plt.figure()
-        # ax = fig.add_subplot(1, 3, 1)
-        # plt.imshow(img.detach().cpu().numpy()[0, :, :, :3])
-        # cir = plt.Circle(target_xy[0], 5, color='r')
-        # ax.add_patch(cir)
-
-        # fig.add_subplot(1, 3, 2)
-        # plt.imshow(img.detach().cpu().numpy()[0, :, :, 3])
-
-        # ax3 = fig.add_subplot(1, 3, 3)
-        # attn_map_target = np.zeros((28 * 28,))
-        # attn_map_target[attn_index[0] - 2] = 1
-        # attn_map_target = attn_map_target.reshape((28, 28))
-        # plt.imshow(attn_map_target)
-
-
-        # plt.show()
-
         # Forward pass
         optimizer.zero_grad()
         if stage == 0:
@@ -90,28 +69,38 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss = loss5
 
         # Attention Supervision for target id
-        target_attn = attn_map[:, 0, -1]
-        loss_attn_target = criterion(target_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
+        # target_attn = attn_map[:, 0, -1]
+        # loss_attn_target = criterion(target_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
+        target_attn_gt = torch.zeros(attn_map.shape[0], attn_map.shape[2], dtype=torch.float32).to(device)
+        target_attn_gt[:, -1] = 1
+        loss_attn_target = cross_entropy(attn_map[:, 0, :], target_attn_gt)
         
         # Attention Supervision for Target Pos
-        # target_pos_attn = torch.sum(attn_map2[:, 0, 1:785], -1)
-        target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index)
-        loss_target_pos_attn = criterion(target_pos_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+        # target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index)
+        # loss_target_pos_attn = criterion(target_pos_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+        attn_index = torch.tensor(attn_index, dtype=torch.int64).to(device)
+        target_pos_attn_gt = F.one_hot(attn_index, num_classes=attn_map.shape[2])
+        loss_target_pos_attn = cross_entropy(attn_map2[:, 0, :], target_pos_attn_gt)
 
         # Attention Loss
         loss_attn = (loss_attn_target + loss_target_pos_attn) * 5000
 
         if stage > 0:
             # Attention Supervision for Target Pos, EEF Pos, Command
-            traj_attn = attn_map3[:, 1, 0] + attn_map3[:, 1, -2] + attn_map3[:, 1, -1]
-            loss_traj_attn = criterion(traj_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
+            # traj_attn = attn_map3[:, 1, 0] + attn_map3[:, 1, -2] + attn_map3[:, 1, -1]
+            # loss_traj_attn = criterion(traj_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
+            traj_attn_gt = torch.zeros(attn_map.shape[0], attn_map.shape[2], dtype=torch.float32).to(device)
+            traj_attn_gt[:, 0] = 1
+            traj_attn_gt[:, -2] = 1
+            traj_attn_gt[:, -1] = 1
+            loss_traj_attn = cross_entropy(attn_map3[:, 1, :], traj_attn_gt)
             loss_attn = loss_attn + loss_traj_attn * 5000
 
             # Only training on xyz, ignoring rpy
             # For trajectory, use a pre-defined weight matrix to indicate the importance of the trajectory points
             trajectory_pred = trajectory_pred * mask
             ee_traj = ee_traj * mask
-            weight_matrix = torch.tensor(np.array([1 ** i for i in range(ee_traj.shape[-1])]), dtype=torch.float32) + torch.tensor(np.array([0.9 ** i for i in range(ee_traj.shape[-1]-1, -1, -1)]), dtype=torch.float32)
+            weight_matrix = torch.tensor(np.array([0.9 ** i for i in range(ee_traj.shape[-1])]), dtype=torch.float32) + torch.tensor(np.array([0.9 ** i for i in range(ee_traj.shape[-1]-1, -1, -1)]), dtype=torch.float32)
             # weight_matrix = weight_matrix
             weight_matrix = weight_matrix.unsqueeze(0).unsqueeze(1).repeat(ee_traj.shape[0], ee_traj.shape[1], 1).cuda()
             loss1 = (criterion2(trajectory_pred, ee_traj) * weight_matrix).sum() / (mask * weight_matrix).sum()
@@ -308,7 +297,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
             writer.add_scalar('test error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
 
 
-def main(writer, name, batch_size=256):
+def main(writer, name, batch_size=96):
     # data_root_path = r'/data/Documents/yzhou298'
     data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
@@ -332,22 +321,23 @@ def main(writer, name, batch_size=256):
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=True, length_total=120)
+    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=True, length_total=36)
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
     dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120)
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
+                                          shuffle=True, num_workers=2,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=36)
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
+                                          shuffle=True, num_workers=2,
                                           collate_fn=pad_collate_xy_lang)
 
+    # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.0001)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.MSELoss()
-    scheduler = None
+    scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
 
     print('loaded')
 
@@ -368,6 +358,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-11-rgbd-again-lr-1e-4'
+    name = 'train-11-rgbd-crossentropy-mse-lr-1e-4'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
