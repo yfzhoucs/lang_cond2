@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_displacement import Backbone
-from utils.load_data_rgbd_displacement import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgbd_displacement_delta_action import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -305,7 +305,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                     trajectory_pred = trajectory_pred * std_traj_gripper_centered
                     target_position_pred = target_position_pred * std
                     target_pos = target_pos * std
-                    ee_traj = ee_traj * std_traj_gripper
+                    ee_traj = ee_traj * std_traj_gripper_centered
                     gripper = (joint_angles_traj[0, -1, :].detach().cpu() * std_traj_gripper[-1]).numpy()
                     gripper_pred = trajectory_pred[0, :, 9].detach().cpu().numpy()
                     gripper_x = np.arange(len(gripper))
@@ -450,6 +450,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-centered'
+    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-delta-action'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
