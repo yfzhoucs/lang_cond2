@@ -380,7 +380,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk2'
+    data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -424,7 +424,7 @@ def main(writer, name, batch_size=256):
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=3e-5)
     criterion = nn.MSELoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
 
@@ -450,6 +450,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-delta-action'
+    name = 'train-12-rgbd-mse-displacement-lr-3e-5-aligned-train-test-delta-action'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
