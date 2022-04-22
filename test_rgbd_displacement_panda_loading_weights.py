@@ -380,8 +380,8 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
-    # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk1'
+    data_root_path = r'/share/yzhou298'
+    # data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -389,7 +389,7 @@ def main(writer, name, batch_size=256):
     ckpt = None
 
     # load model
-    model = Backbone(img_size=224, embedding_size=192, num_traces_in=8, num_traces_out=10, num_weight_points=12)
+    model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12)
     if ckpt is not None:
         model.load_state_dict(torch.load(ckpt), strict=True)
 
@@ -412,14 +412,14 @@ def main(writer, name, batch_size=256):
     model = model.to(device)
 
     # load data
-    # dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
-    # data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
-    #                                       shuffle=True, num_workers=8,
-    #                                       collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp_panda = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_panda_test/')], random=False, length_total=120, normalize='panda')
-    data_loader_test_dmp_panda = torch.utils.data.DataLoader(dataset_train_split_dmp, batch_size=batch_size,
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
+    data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
+    # dataset_test_dmp_panda = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_panda_test/')], random=False, length_total=120, normalize='panda')
+    # data_loader_test_dmp_panda = torch.utils.data.DataLoader(dataset_test_dmp_panda, batch_size=batch_size,
+    #                                       shuffle=True, num_workers=8,
+    #                                       collate_fn=pad_collate_xy_lang)
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.MSELoss()
@@ -430,8 +430,8 @@ def main(writer, name, batch_size=256):
     # train n epoches
     loss_stage = 2
     for i in range(0, 1):
-        # test(writer, name, i + 1, data_loader_test_dmp, model, criterion, 0, loss_stage, print_attention_map=True)
-        test(writer, name, i + 1, data_loader_test_dmp_panda, model, criterion, 0, loss_stage, print_attention_map=True)
+        test(writer, name, i + 1, data_loader_test_dmp, model, criterion, 0, loss_stage, print_attention_map=True)
+        # test(writer, name, i + 1, data_loader_test_dmp_panda, model, criterion, 0, loss_stage, print_attention_map=True)
 
 
 if __name__ == '__main__':
