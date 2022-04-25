@@ -200,6 +200,7 @@ class DMPDatasetEERandTarXYLang(Dataset):
         depth = np.load(self.trials[trial_idx]['depth_paths'][step_idx])[::-1,:]
         depth = np.float32(depth) / 1000
         depth[depth > 30] = 0
+        depth[depth > 3] = 0
         depth = torch.tensor(depth, dtype=torch.float32)
 
         img = torch.cat((img, depth.unsqueeze(axis=2)), axis=2)
@@ -304,7 +305,7 @@ if __name__ == '__main__':
                                           shuffle=True, num_workers=1,
                                           collate_fn=pad_collate_xy_lang)
 
-    for img, target, joint_angles, ee_pos, ee_traj, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj in dataloader:
+    for img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement in dataloader:
         # print(target, joint_angles, ee_pos, ee_traj, length, target_pos)
         # print(length, len(ee_traj))
         print(target.shape, joint_angles.shape, ee_pos.shape, ee_traj.shape, length.shape, target_pos.shape, phis.shape, mask.shape, sentence.shape, img.shape, joint_angles_traj.shape)
@@ -313,17 +314,19 @@ if __name__ == '__main__':
         fig = plt.figure(figsize=plt.figaspect(0.5))
 
         ax = fig.add_subplot(1, 2, 1)
-        ax.imshow(img[0].numpy())
 
-        ax = fig.add_subplot(1, 2, 2)
-        xs = np.arange(joint_angles_traj.shape[2])
-        ax.plot(xs, joint_angles_traj[0, 0, :], label='0')
-        ax.plot(xs, joint_angles_traj[0, 1, :], label='1')
-        ax.plot(xs, joint_angles_traj[0, 2, :], label='2')
-        ax.plot(xs, joint_angles_traj[0, 3, :], label='3')
-        ax.plot(xs, joint_angles_traj[0, 4, :], label='4')
-        ax.plot(xs, joint_angles_traj[0, 5, :], label='5')
-        ax.plot(xs, joint_angles_traj[0, 6, :], label='6')
-        ax.legend()
+        print(img[0, :, :, 3].shape)
+        ax.imshow(img[0, :, :, 3].numpy())
+
+        # ax = fig.add_subplot(1, 2, 2)
+        # xs = np.arange(joint_angles_traj.shape[2])
+        # ax.plot(xs, joint_angles_traj[0, 0, :], label='0')
+        # ax.plot(xs, joint_angles_traj[0, 1, :], label='1')
+        # ax.plot(xs, joint_angles_traj[0, 2, :], label='2')
+        # ax.plot(xs, joint_angles_traj[0, 3, :], label='3')
+        # ax.plot(xs, joint_angles_traj[0, 4, :], label='4')
+        # ax.plot(xs, joint_angles_traj[0, 5, :], label='5')
+        # ax.plot(xs, joint_angles_traj[0, 6, :], label='6')
+        # ax.legend()
         
-        # plt.show()
+        plt.show()
