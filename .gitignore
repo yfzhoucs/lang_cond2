@@ -1,3 +1,4 @@
 results_png/
 runs/
 *__pycache__/
+*.json
