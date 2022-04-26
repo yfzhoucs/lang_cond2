@@ -1,6 +1,6 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
-from models.backbone_rgbd_displacement_multi_robot import Backbone
+from models.backbone_rgbd_displacement_multi_robot_2 import Backbone
 from utils.load_data_rgbd_displacement_multi_robot import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -460,13 +460,13 @@ def main(writer, name, batch_size=256):
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True)
             test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        if i > 1 and i <= 3:
+        if i > 10 and i <= 30:
             loss_stage = 1
-        elif i > 3:
+        elif i > 30:
             loss_stage = 2
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-panda-transfer-from-ur5-aligned-depth-light'
+    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-panda-transfer-from-ur5-aligned-depth-light-not-loading-query'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
