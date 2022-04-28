@@ -313,44 +313,47 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                     gripper_x = np.arange(len(gripper))
 
                     fig = plt.figure(num=1, clear=True)
-                    ax = fig.add_subplot(1, 3, 1, projection='3d')
-                    x_ee = trajectory_pred[0, :, 0].detach().cpu().numpy()
-                    y_ee = trajectory_pred[0, :, 1].detach().cpu().numpy()
-                    z_ee = trajectory_pred[0, :, 2].detach().cpu().numpy()
-                    x_target = target_position_pred[0, 0].detach().cpu().numpy()
-                    y_target = target_position_pred[0, 1].detach().cpu().numpy()
-                    z_target = target_position_pred[0, 2].detach().cpu().numpy()
-                    x_target_gt = target_pos[0, 0].detach().cpu().numpy()
-                    y_target_gt = target_pos[0, 1].detach().cpu().numpy()
-                    z_target_gt = target_pos[0, 2].detach().cpu().numpy()
-                    x_ee_gt = ee_traj[0, :, 0].detach().cpu().numpy()
-                    y_ee_gt = ee_traj[0, :, 1].detach().cpu().numpy()
-                    z_ee_gt = ee_traj[0, :, 2].detach().cpu().numpy()
-                    ax.scatter3D(x_ee, y_ee, z_ee, color='green')
-                    ax.scatter3D(x_target, y_target, z_target, color='blue')
-                    ax.scatter3D(x_target_gt, y_target_gt, z_target_gt, color='red')
-                    ax.scatter3D(x_ee_gt, y_ee_gt, z_ee_gt, color='grey')
+                    # ax = fig.add_subplot(1, 3, 1, projection='3d')
+                    # x_ee = trajectory_pred[0, :, 0].detach().cpu().numpy()
+                    # y_ee = trajectory_pred[0, :, 1].detach().cpu().numpy()
+                    # z_ee = trajectory_pred[0, :, 2].detach().cpu().numpy()
+                    # x_target = target_position_pred[0, 0].detach().cpu().numpy()
+                    # y_target = target_position_pred[0, 1].detach().cpu().numpy()
+                    # z_target = target_position_pred[0, 2].detach().cpu().numpy()
+                    # x_target_gt = target_pos[0, 0].detach().cpu().numpy()
+                    # y_target_gt = target_pos[0, 1].detach().cpu().numpy()
+                    # z_target_gt = target_pos[0, 2].detach().cpu().numpy()
+                    # x_ee_gt = ee_traj[0, :, 0].detach().cpu().numpy()
+                    # y_ee_gt = ee_traj[0, :, 1].detach().cpu().numpy()
+                    # z_ee_gt = ee_traj[0, :, 2].detach().cpu().numpy()
+                    # ax.scatter3D(x_ee, y_ee, z_ee, color='green')
+                    # ax.scatter3D(x_target, y_target, z_target, color='blue')
+                    # ax.scatter3D(x_target_gt, y_target_gt, z_target_gt, color='red')
+                    # ax.scatter3D(x_ee_gt, y_ee_gt, z_ee_gt, color='grey')
 
-                    ax = fig.add_subplot(1, 3, 2)
+                    ax = fig.add_subplot(1, 2, 1)
+                    ax.imshow(attn_map2[0, 0, 5:5+28*28].detach().cpu().numpy().reshape((28, 28))[::-1, :])
+
+                    ax = fig.add_subplot(1, 2, 2)
                     ax.imshow(img[0, :, :, :3].detach().cpu().numpy()[::-1, :, :])
 
 
-                    ax = fig.add_subplot(1, 3, 3)
-                    ax.plot(gripper_x, gripper)
-                    ax.plot(gripper_x, gripper_pred)
+                    # ax = fig.add_subplot(1, 3, 3)
+                    # ax.plot(gripper_x, gripper)
+                    # ax.plot(gripper_x, gripper_pred)
 
-                    # plt.show()
+                    plt.show()
 
-                    save_name = name
-                    if train_split:
-                        save_name = save_name + '_train_split'
-                    if not os.path.isdir(f'results_png/'):
-                        os.mkdir(f'results_png/')
-                    if not os.path.isdir(f'results_png/{save_name}/'):
-                        os.mkdir(f'results_png/{save_name}/')
-                    if not os.path.isdir(f'results_png/{save_name}/{epoch_idx}/'):
-                        os.mkdir(f'results_png/{save_name}/{epoch_idx}/')
-                    plt.savefig(os.path.join(f'results_png/{save_name}/{epoch_idx}/', f'{idx}.png'))
+                    # save_name = name
+                    # if train_split:
+                    #     save_name = save_name + '_train_split'
+                    # if not os.path.isdir(f'results_png/'):
+                    #     os.mkdir(f'results_png/')
+                    # if not os.path.isdir(f'results_png/{save_name}/'):
+                    #     os.mkdir(f'results_png/{save_name}/')
+                    # if not os.path.isdir(f'results_png/{save_name}/{epoch_idx}/'):
+                    #     os.mkdir(f'results_png/{save_name}/{epoch_idx}/')
+                    # plt.savefig(os.path.join(f'results_png/{save_name}/{epoch_idx}/', f'{idx}.png'))
 
 
             idx += 1
@@ -419,15 +422,15 @@ def test_ckpt(ckpt_path, name, ckpt, data_loaders):
 
         model = model.to(device)
 
-        result = test(None, name, 0, data_loaders[dataloader_name], model, criterion, 0, stage=2, print_attention_map=False)
+        result = test(None, name, 0, data_loaders[dataloader_name], model, criterion, 0, stage=2, print_attention_map=True)
         results[dataloader_name] = result
     return results
 
 
 def main(batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
-    # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk1'
+    data_root_path = r'/share/yzhou298'
+    # data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -443,20 +446,20 @@ def main(batch_size=256):
 
 
     # load data
-    # dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
-    # data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
-    #                                       shuffle=True, num_workers=8,
-    #                                       collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp_panda = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_panda_2/')], random=False, length_total=120, normalize='panda')
-    data_loader_test_dmp_panda = torch.utils.data.DataLoader(dataset_test_dmp_panda, batch_size=batch_size,
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
+    data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
+    # dataset_test_dmp_panda = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_panda_2/')], random=False, length_total=120, normalize='panda')
+    # data_loader_test_dmp_panda = torch.utils.data.DataLoader(dataset_test_dmp_panda, batch_size=batch_size,
+    #                                       shuffle=True, num_workers=8,
+    #                                       collate_fn=pad_collate_xy_lang)
 
     print(ckpts)
 
     data_loaders = {
-        # 'ur5': data_loader_test_dmp,
-        'panda': data_loader_test_dmp_panda
+        'ur5': data_loader_test_dmp,
+        # 'panda': data_loader_test_dmp_panda
     }
 
     results = {}
