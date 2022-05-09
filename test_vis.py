@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
-from models.backbone_rgbd_displacement import Backbone
-from utils.load_data_rgbd_displacement import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from models.backbone_rgbd_displacement_multi_robot import Backbone
+from utils.load_data_rgbd_displacement_multi_robot import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import time
 import random
 import clip
+import re
+import json
 
 
 if torch.cuda.is_available():
@@ -196,14 +198,12 @@ def train(writer, name, epoch_idx, data_loader, model,
         if save_ckpt:
             if not os.path.isdir(os.path.join(ckpt_path, name)):
                 os.mkdir(os.path.join(ckpt_path, name))
-            if global_step % 100 == 0:
+            if global_step % 5000 == 0:
                 checkpoint = {
                     'model': model.state_dict(),
                     'optimizer': optimizer.state_dict()
                 }
                 torch.save(checkpoint, os.path.join(ckpt_path, name, f'{global_step}.pth'))
-        if global_step == 5000:
-            exit()
 
         # if global_step == 50:
         #     scheduler.step()
@@ -211,6 +211,58 @@ def train(writer, name, epoch_idx, data_loader, model,
         # elif global_step == 100:
         #     scheduler.step()
     return stage
+
+
+def visualize(img, ee_pos, target_pos, target_position_pred, mean, std, attn_map, attn_map2, attn_map3, attn_map4, sentence):
+
+    img = img[0].detach().numpy()
+    ee_pos = ee_pos[0].detach().numpy() * std + mean
+    target_pos = target_pos[0].detach().numpy() * std + mean
+
+    target_pos_xy = xyz_to_xy(target_pos[:3])
+    # target_pos_xy[0] = 224 - target_pos_xy[0]
+    target_pos_xy[1] = 224 - target_pos_xy[1]
+
+    target_pos_pred_xy = xyz_to_xy(target_position_pred[:3])
+    # target_pos_pred_xy[0] = 224 - target_pos_pred_xy[0]
+    target_pos_pred_xy[1] = 224 - target_pos_pred_xy[1]
+
+    ee_pos_xy = xyz_to_xy(ee_pos[:3])
+    # ee_pos_xy[0] = 224 - ee_pos_xy[0]
+    ee_pos_xy[1] = 224 - ee_pos_xy[1]
+
+    # print(target_position_pred)
+    fig = plt.figure(num=1, clear=True)
+    ax = fig.add_subplot(1, 3, 1)
+    img[:, :, 3][img[:, :, 3] > 0] = 1
+    ax.imshow(img[::-1, :, :])
+    # circle = plt.Circle(target_pos_xy, 5, color='r')
+    # ax.add_patch(circle)
+    circle = plt.Circle(target_pos_pred_xy, 5, color='g', label='Target Pred')
+    ax.add_patch(circle)
+    circle = plt.Circle(ee_pos_xy, 5, color='b', label='EE Pred')
+    ax.add_patch(circle)
+    ax.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left")
+
+
+    ax = fig.add_subplot(1, 3, 2)
+    attn = ax.imshow(attn_map[0].detach().cpu().numpy()[:, [0, 1, 2, 3, 4, -2, -1]])
+    ax.set_xticks([0, 1, 2, 3, 4, 5, 6])
+    ax.set_xticklabels([0, 1, 2, 3, 4, 'Joints', 'Lang'])
+    plt.title('Attn Layer 0')
+
+    ax = fig.add_subplot(1, 3, 3)
+    attn = ax.imshow(attn_map2[0].detach().cpu().numpy()[:, [0, 1, 2, 3, 4, -2, -1]])
+    ax.set_xticks([0, 1, 2, 3, 4, 5, 6])
+    ax.set_xticklabels([0, 1, 2, 3, 4, 'Joints', 'Lang'])
+    fig.colorbar(attn)
+    plt.title('Attn Layer 1')
+
+    plt.suptitle(sentence)
+    plt.show()
+
+    # print(x_target_gt, y_target_gt, z_target_gt, np.array(interface.get_xyz(target_name)), target_pos, target_pos * std + mean)
+    return
 
 
 def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_size, stage, print_attention_map=False, train_split=False):
@@ -231,13 +283,13 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 
         mean = np.array([ 2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0])
         std = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1]) ** (1/2)
-        mean_joints = np.array([-2.26736831e-01, 5.13238925e-01, -1.84928474e+00, 7.77270127e-01, 1.34229937e+00, 1.39107280e-03, 2.12295943e-01])
-        std_joints = np.array([1.41245676e-01, 3.07248648e-02, 1.34113984e-01, 6.87947763e-02, 1.41992804e-01, 7.84910314e-05, 5.66411791e-02]) ** (1/2)
-        mean_traj_gripper = np.array([2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0, 2.12295943e-01])
-        std_traj_gripper = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1, 5.66411791e-02]) ** (1/2)
+        mean_joints = np.array([-0.00357743, 0.29354134, 0.03703507, -2.01260356, -0.03319358, 0.76566389, 0.05069619, 0.01733641])
+        std_joints = np.array([0.07899751, 0.04528939, 0.27887484, 0.10307656, 0.06242473, 0.04195134, 0.27607541, 0.00033524]) ** (1/2)
+        mean_traj_gripper = np.array([2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0, 0.01733641])
+        std_traj_gripper = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1, 0.00033524]) ** (1/2)
         mean_displacement = np.array([2.53345831e-01, 1.14758266e-01, -6.98193015e-02, 0, 0, 0, 0, 0, 0])
         std_displacement = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1])
-        std_traj_gripper_centered = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1, 0.23799407366571126])
+        # std_traj_gripper_centered = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1, 0.23799407366571126])
         
         for idx, (img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement) in enumerate(data_loader):
             global_step = epoch_idx * len(data_loader) + idx
@@ -291,7 +343,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                 ee_traj = ee_traj.detach().cpu().transpose(2, 1)
                 target_pos = target_pos.detach().cpu()
                 
-                error_trajectory_this_time = torch.sum(((trajectory_pred[:, :, :3] - ee_traj[:, :, :3]) * torch.tensor(std_displacement[:3])) ** 2, axis=2) ** 0.5
+                error_trajectory_this_time = torch.sum(((trajectory_pred[:, :, :3] - ee_traj[:, :, :3]) * torch.tensor(std[:3])) ** 2, axis=2) ** 0.5
                 error_trajectory_this_time = torch.sum(error_trajectory_this_time)
                 error_trajectory += error_trajectory_this_time
                 num_trajpoints += torch.sum(mask[:, :3, :]) / mask.shape[1]
@@ -303,8 +355,9 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 
             # Print Attention Map
             if print_attention_map:
+
                 if stage > 1:
-                    trajectory_pred = trajectory_pred * std_traj_gripper_centered
+                    trajectory_pred = trajectory_pred * std_traj_gripper
                     target_position_pred = target_position_pred * std
                     target_pos = target_pos * std
                     ee_traj = ee_traj * std_traj_gripper
@@ -313,33 +366,34 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                     gripper_x = np.arange(len(gripper))
 
                     fig = plt.figure(num=1, clear=True)
-                    ax = fig.add_subplot(1, 3, 1, projection='3d')
-                    x_ee = trajectory_pred[0, :, 0].detach().cpu().numpy()
-                    y_ee = trajectory_pred[0, :, 1].detach().cpu().numpy()
-                    z_ee = trajectory_pred[0, :, 2].detach().cpu().numpy()
-                    x_target = target_position_pred[0, 0].detach().cpu().numpy()
-                    y_target = target_position_pred[0, 1].detach().cpu().numpy()
-                    z_target = target_position_pred[0, 2].detach().cpu().numpy()
-                    x_target_gt = target_pos[0, 0].detach().cpu().numpy()
-                    y_target_gt = target_pos[0, 1].detach().cpu().numpy()
-                    z_target_gt = target_pos[0, 2].detach().cpu().numpy()
-                    x_ee_gt = ee_traj[0, :, 0].detach().cpu().numpy()
-                    y_ee_gt = ee_traj[0, :, 1].detach().cpu().numpy()
-                    z_ee_gt = ee_traj[0, :, 2].detach().cpu().numpy()
-                    ax.scatter3D(x_ee, y_ee, z_ee, color='green')
-                    ax.scatter3D(x_target, y_target, z_target, color='blue')
-                    ax.scatter3D(x_target_gt, y_target_gt, z_target_gt, color='red')
-                    ax.scatter3D(x_ee_gt, y_ee_gt, z_ee_gt, color='grey')
+                    # ax = fig.add_subplot(1, 3, 1, projection='3d')
+                    # x_ee = trajectory_pred[0, :, 0].detach().cpu().numpy()
+                    # y_ee = trajectory_pred[0, :, 1].detach().cpu().numpy()
+                    # z_ee = trajectory_pred[0, :, 2].detach().cpu().numpy()
+                    # x_target = target_position_pred[0, 0].detach().cpu().numpy()
+                    # y_target = target_position_pred[0, 1].detach().cpu().numpy()
+                    # z_target = target_position_pred[0, 2].detach().cpu().numpy()
+                    # x_target_gt = target_pos[0, 0].detach().cpu().numpy()
+                    # y_target_gt = target_pos[0, 1].detach().cpu().numpy()
+                    # z_target_gt = target_pos[0, 2].detach().cpu().numpy()
+                    # x_ee_gt = ee_traj[0, :, 0].detach().cpu().numpy()
+                    # y_ee_gt = ee_traj[0, :, 1].detach().cpu().numpy()
+                    # z_ee_gt = ee_traj[0, :, 2].detach().cpu().numpy()
+                    # ax.scatter3D(x_ee, y_ee, z_ee, color='green')
+                    # ax.scatter3D(x_target, y_target, z_target, color='blue')
+                    # ax.scatter3D(x_target_gt, y_target_gt, z_target_gt, color='red')
+                    # ax.scatter3D(x_ee_gt, y_ee_gt, z_ee_gt, color='grey')
 
-                    ax = fig.add_subplot(1, 3, 2)
-                    ax.imshow(img[0, :, :, :3].detach().cpu().numpy()[::-1, :, :])
+                    # ax = fig.add_subplot(1, 2, 1)
+                    # ax.imshow(attn_map2[0, 0, 5:5+28*28].detach().cpu().numpy().reshape((28, 28))[::-1, :])
+
+                    # ax = fig.add_subplot(1, 2, 2)
+                    # ax.imshow(img[0, :, :, :3].detach().cpu().numpy()[::-1, :, :])
 
 
-                    ax = fig.add_subplot(1, 3, 3)
-                    ax.plot(gripper_x, gripper)
-                    ax.plot(gripper_x, gripper_pred)
-
-                    # plt.show()
+                    # ax = fig.add_subplot(1, 3, 3)
+                    # ax.plot(gripper_x, gripper)
+                    # ax.plot(gripper_x, gripper_pred)
 
                     save_name = name
                     if train_split:
@@ -348,9 +402,13 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                         os.mkdir(f'results_png/')
                     if not os.path.isdir(f'results_png/{save_name}/'):
                         os.mkdir(f'results_png/{save_name}/')
-                    if not os.path.isdir(f'results_png/{save_name}/{epoch_idx}/'):
-                        os.mkdir(f'results_png/{save_name}/{epoch_idx}/')
-                    plt.savefig(os.path.join(f'results_png/{save_name}/{epoch_idx}/', f'{idx}.png'))
+
+                    plt.imshow(attn_map2[0, 0, 5:5+28*28].detach().cpu().numpy().reshape((28, 28))[::-1, :])
+                    plt.savefig(os.path.join(f'results_png/{save_name}/', f'{epoch_idx}_{idx}_attn.png'))
+
+                    plt.imshow(img[0, :, :, :3].detach().cpu().numpy()[::-1, :, :])
+                    plt.savefig(os.path.join(f'results_png/{save_name}/', f'{epoch_idx}_{idx}_img.png'))
+
 
             idx += 1
 
@@ -365,93 +423,104 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
                 print(idx, f'err traj {(error_trajectory / num_trajpoints).item():.4f} err grip {(error_gripper / num_grippoints).item():.4f}')
 
         # Log
-        if not train_split:
-            writer.add_scalar('test error_target_position', error_target_position / num_datapoints, global_step=epoch_idx * train_dataset_size)
-            writer.add_scalar('test error_ee_pos', error_ee_pos / num_datapoints, global_step=epoch_idx * train_dataset_size)
-            if stage > 1:
-                writer.add_scalar('test error_trajectory', error_trajectory / num_trajpoints, global_step=epoch_idx * train_dataset_size)
-                writer.add_scalar('test error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
+        if writer is not None:
+            if not train_split:
+                writer.add_scalar('test error_target_position', error_target_position / num_datapoints, global_step=epoch_idx * train_dataset_size)
+                writer.add_scalar('test error_ee_pos', error_ee_pos / num_datapoints, global_step=epoch_idx * train_dataset_size)
+                if stage > 1:
+                    writer.add_scalar('test error_trajectory', error_trajectory / num_trajpoints, global_step=epoch_idx * train_dataset_size)
+                    writer.add_scalar('test error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
+            else:
+                writer.add_scalar('train_split error_target_position', error_target_position / num_datapoints, global_step=epoch_idx * train_dataset_size)
+                writer.add_scalar('train_split error_ee_pos', error_ee_pos / num_datapoints, global_step=epoch_idx * train_dataset_size)
+                if stage > 1:
+                    writer.add_scalar('train_split error_trajectory', error_trajectory / num_trajpoints, global_step=epoch_idx * train_dataset_size)
+                    writer.add_scalar('train_split error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
+
+        print((error_target_position / num_datapoints).item())
+        print((error_ee_pos / num_datapoints).item())
+        print((error_trajectory / num_trajpoints).item())
+        print((error_gripper / num_grippoints).item())
+
+        return {
+            'error_target_position': (error_target_position / num_datapoints).item(),
+            'error_ee_pos': (error_ee_pos / num_datapoints).item(),
+            'error_trajectory': (error_trajectory / num_trajpoints).item(),
+            'error_gripper': (error_gripper / num_grippoints).item(),
+        }
+
+
+def test_ckpt(ckpt_path, ckpt_folder_name, save_folder_name, ckpt, data_loaders):
+
+    ckpt_folder = os.path.join(ckpt_path, ckpt_folder_name)
+    ckpt_file = os.path.join(ckpt_folder, ckpt)
+    pretrained_dict = torch.load(os.path.join(ckpt_file), map_location=device)['model']
+
+    print('loaded', ckpt)
+    criterion = nn.MSELoss()
+
+    results = {}
+    for dataloader_name in data_loaders:
+        if dataloader_name == 'ur5':
+            model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12, device=device)
         else:
-            writer.add_scalar('train_split error_target_position', error_target_position / num_datapoints, global_step=epoch_idx * train_dataset_size)
-            writer.add_scalar('train_split error_ee_pos', error_ee_pos / num_datapoints, global_step=epoch_idx * train_dataset_size)
-            if stage > 1:
-                writer.add_scalar('train_split error_trajectory', error_trajectory / num_trajpoints, global_step=epoch_idx * train_dataset_size)
-                writer.add_scalar('train_split error_gripper', error_gripper / num_grippoints, global_step=epoch_idx * train_dataset_size)
+            model = Backbone(img_size=224, embedding_size=192, num_traces_in=8, num_traces_out=10, num_weight_points=12, device=device)
+
+        generic_re = re.compile('|'.join(model.do_not_load))
+        pretrained_dict = {k:pretrained_dict[k] for k in pretrained_dict if not re.match(generic_re, k)}
+        pretrained_dict.update(pretrained_dict)
+        model.load_state_dict(pretrained_dict, strict=False)
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+        model = model.to(device)
+
+        step_idx = int(ckpt.split(r'.')[0])
+        result = test(None, save_folder_name, step_idx, data_loaders[dataloader_name], model, criterion, 0, stage=2, print_attention_map=True)
+        results[dataloader_name] = result
+    return results
 
 
-def main(writer, name, batch_size=96):
+def main(batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     data_root_path = r'/share/yzhou298'
-    # data_root_path = r'/mnt/disk2'
+    # data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
     curriculum_learning = True
     ckpt = None
 
-    # load model
-    model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12)
-    if ckpt is not None:
-        model.load_state_dict(torch.load(ckpt), strict=True)
 
-    model = model.to(device)
+    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-centered-for-saving-attn'
+    ckpts = [f'{i}.pth' for i in range(0, 5010, 100)]
+    folder_name = 'attn_map'
+
 
     # load data
-    data_dirs = [
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224/'),
-    ]
-    dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120)
-    data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
-                                          collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=True, length_total=120)
-    data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
-                                          collate_fn=pad_collate_xy_lang)
-    dataset_train_split = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=True, length_total=120)
-    data_loader_train_split = torch.utils.data.DataLoader(dataset_train_split, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
-                                          collate_fn=pad_collate_xy_lang)
-    
-    dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120)
-    data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
-                                          collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/')], random=False, length_total=120)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test_10/')], random=False, length_total=120)
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
+                                          shuffle=False, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_train_split_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_train_split/')], random=False, length_total=120)
-    data_loader_train_split_dmp = torch.utils.data.DataLoader(dataset_train_split_dmp, batch_size=batch_size,
-                                          shuffle=True, num_workers=8,
-                                          collate_fn=pad_collate_xy_lang)
+    # dataset_test_dmp_panda = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_panda_2/')], random=False, length_total=120, normalize='panda')
+    # data_loader_test_dmp_panda = torch.utils.data.DataLoader(dataset_test_dmp_panda, batch_size=batch_size,
+    #                                       shuffle=True, num_workers=8,
+    #                                       collate_fn=pad_collate_xy_lang)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    criterion = nn.MSELoss()
-    scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
+    print(ckpts)
 
-    print('loaded')
+    data_loaders = {
+        'ur5': data_loader_test_dmp,
+        # 'panda': data_loader_test_dmp_panda
+    }
 
-    # train n epoches
-    loss_stage = 0
-    for i in range(0, 300):
-        if loss_stage <= 1:
-            loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
-                criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
-            test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True)
-            test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
-        else:
-            loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
-                criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
-            test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True)
-            test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        if i > 1 and i <= 3:
-            loss_stage = 1
-        elif i > 3:
-            loss_stage = 2
+    results = {}
+    for ckpt in ckpts:
+        result = test_ckpt(ckpt_path, name, folder_name, ckpt, data_loaders)
+
+
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgbd-mse-displacement-lr-1e-4-aligned-train-test-centered-for-saving-attn'
-    writer = SummaryWriter('runs/' + name)
-    main(writer, name)
+    main()
