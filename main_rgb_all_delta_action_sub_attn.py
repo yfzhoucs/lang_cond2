@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_all_delta_action import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_all_delta_action_fast_gripper import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -456,6 +456,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn'
+    name = 'train-12-rgb-sub-attn-fast-gripper'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
