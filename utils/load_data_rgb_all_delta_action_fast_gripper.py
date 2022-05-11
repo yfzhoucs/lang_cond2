@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 import json
 import bisect
 import clip
+import random
 
 
 class DMPDatasetEERandTarXYLang(Dataset):
@@ -102,10 +103,6 @@ class DMPDatasetEERandTarXYLang(Dataset):
                 [ 1.1624e-01, -9.2316e+01,  1.1633e+02]]).T
         self.bias = np.array([107.8063, 114.5833])
 
-        self.verb = ['go to', 'pick up', 'move', 'raise up', 'push']
-        self.noun = ['object', 'cube', 'square']
-        self.target = ['red', 'coke', 'pepsi', 'milk', 'bread', 'bottle']
-
         self.mean = np.array([ 2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0])
         self.var = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1])
         self.mean_joints = np.array([-2.26736831e-01, 5.13238925e-01, -1.84928474e+00, 7.77270127e-01, 1.34229937e+00, 1.39107280e-03, 2.12295943e-01])
@@ -160,19 +157,16 @@ class DMPDatasetEERandTarXYLang(Dataset):
         return (name + ' ' + obj).strip()
 
     def verb_phrase_template(self, action_inst):
+        if action_inst is None:
+            action_inst = random.choice(self.action_inst_to_verb.keys())
         action_id = np.random.randint(len(self.action_inst_to_verb[action_inst]))
         verb = self.action_inst_to_verb[action_inst][action_id]
         return verb.strip()
 
     def sentence_template(self, target_id, action_inst=None):
         sentence = ''
-        if action_inst is None:
-            verb = np.random.randint(len(self.verb) + 1)
-            if verb < len(self.verb):
-                sentence = sentence + self.verb[verb]
-        else:
-            verb = self.verb_phrase_template(action_inst)
-            sentence = sentence + verb
+        verb = self.verb_phrase_template(action_inst)
+        sentence = sentence + verb
         sentence = sentence + ' ' + self.noun_phrase_template(target_id)
         return sentence.strip()
 
