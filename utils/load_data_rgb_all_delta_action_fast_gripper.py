@@ -158,7 +158,7 @@ class DMPDatasetEERandTarXYLang(Dataset):
 
     def verb_phrase_template(self, action_inst):
         if action_inst is None:
-            action_inst = random.choice(self.action_inst_to_verb.keys())
+            action_inst = random.choice(list(self.action_inst_to_verb.keys()))
         action_id = np.random.randint(len(self.action_inst_to_verb[action_inst]))
         verb = self.action_inst_to_verb[action_inst][action_id]
         return verb.strip()
