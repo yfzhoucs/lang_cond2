@@ -22,7 +22,7 @@ class DMPDatasetEERandTarXYLang(Dataset):
         #     |--trial1
         #     |--...
 
-        assert normalize in ['separate', 'together', 'none', 'panda', 'jaco2']
+        assert normalize in ['separate', 'together', 'none']
 
         all_dirs = []
         for data_dir in data_dirs:
@@ -55,17 +55,12 @@ class DMPDatasetEERandTarXYLang(Dataset):
         self.action_inst_to_verb = {
             'push': ['push', 'move'],
             'pick': ['pick', 'pick up', 'raise', 'hold'],
+            'pick_above': ['pick from above', 'pick up from above'],
             'put_down': ['put down', 'place down']
         }
 
         length = 0
         for trial in all_dirs:
-
-            # trial_id = int(trial.strip().split(r'/')[-1])
-            # if not ((trial_id >= 1700) and (trial_id < 1725)):
-            #     continue
-
-
             trial_dict = {}
 
             states_json = os.path.join(trial, 'states.json')
@@ -109,16 +104,16 @@ class DMPDatasetEERandTarXYLang(Dataset):
                 [ 1.1624e-01, -9.2316e+01,  1.1633e+02]]).T
         self.bias = np.array([107.8063, 114.5833])
 
+        self.verb = ['go to', 'pick up', 'move', 'raise up', 'push']
+        self.noun = ['object', 'cube', 'square']
+        self.target = ['red', 'coke', 'pepsi', 'milk', 'bread', 'bottle']
+
         self.mean = np.array([ 2.97563984e-02,  4.47217117e-01,  8.45049397e-02, 0, 0, 0, 0, 0, 0])
         self.var = np.array([4.52914246e-02, 5.01675921e-03, 4.19371463e-03, 1, 1, 1, 1, 1, 1])
         self.mean_joints = np.array([-2.26736831e-01, 5.13238925e-01, -1.84928474e+00, 7.77270127e-01, 1.34229937e+00, 1.39107280e-03, 2.12295943e-01])
         self.var_joints = np.array([1.41245676e-01, 3.07248648e-02, 1.34113984e-01, 6.87947763e-02, 1.41992804e-01, 7.84910314e-05, 5.66411791e-02])
         self.mean_joints_together = 0.07375253452255098
         self.var_joints_together = 1.1682192251792096
-        self.mean_joints_panda = np.array([-0.00357743, 0.29354134, 0.03703507, -2.01260356, -0.03319358, 0.76566389, 0.05069619, 0.01733641])
-        self.std_joints_panda = np.array([0.07899751, 0.04528939, 0.27887484, 0.10307656, 0.06242473, 0.04195134, 0.27607541, 0.00033524]) ** (1/2)
-        self.mean_joints_jaco = np.array([1.55675253, 4.4066693, 1.15504435, 1.71089821, 2.93128305, 1.74011258, 0.04558132])
-        self.std_joints_jaco = np.array([0.29413278, 0.03133729, 0.33075052, 0.36203287, 1.37433513, 0.74981066, 1.17590218]) ** (1/2)
 
         self.mean_displacement = np.array([2.53345831e-01, 1.14758266e-01, -6.98193015e-02, 0, 0, 0, 0, 0, 0])
         self.std_displacement = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1])
@@ -241,13 +236,6 @@ class DMPDatasetEERandTarXYLang(Dataset):
         elif self.normalize == 'none':
             joint_angles = torch.tensor(self.trials[trial_idx]['joint_angles'][step_idx], dtype=torch.float32)
             joint_angles_traj = torch.tensor(self.trials[trial_idx]['joint_angles'][step_idx:], dtype=torch.float32)
-        elif self.normalize == 'panda':
-            joint_angles = torch.tensor((self.trials[trial_idx]['joint_angles'][step_idx] - self.mean_joints_panda) / self.std_joints_panda, dtype=torch.float32)
-            joint_angles_traj = torch.tensor((self.trials[trial_idx]['joint_angles'][step_idx:] - self.mean_joints_panda) / self.std_joints_panda, dtype=torch.float32)
-        elif self.normalize == 'jaco2':
-            joint_angles = torch.tensor((self.trials[trial_idx]['joint_angles'][step_idx] - self.mean_joints_jaco) / self.std_joints_jaco, dtype=torch.float32)
-            joint_angles_traj = torch.tensor((self.trials[trial_idx]['joint_angles'][step_idx:] - self.mean_joints_jaco) / self.std_joints_jaco, dtype=torch.float32)
-
 
         length_total = self.length_total
         length_left = max(length_total - ee_traj.shape[0], 0)
@@ -297,9 +285,9 @@ def pad_collate_xy_lang(batch):
 
 if __name__ == '__main__':
     data_dirs = [
-        '/mnt/disk3/dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_jaco2_test/'
+        '/share/yzhou298/dataset/mujoco_dataset_pick_push_RGBD_different_angles_224_test/'
     ]
-    dataset = DMPDatasetEERandTarXYLang(data_dirs, random=False, normalize='jaco2')
+    dataset = DMPDatasetEERandTarXYLang(data_dirs, random=False, normalize='separate')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2,
                                           shuffle=True, num_workers=1,
                                           collate_fn=pad_collate_xy_lang)
