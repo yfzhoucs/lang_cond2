@@ -434,7 +434,7 @@ def main(writer, name, batch_size=256):
     print('loaded')
 
     # train n epoches
-    loss_stage = 0
+    loss_stage = 2
     for i in range(0, 300):
         whether_test = ((i % 10) == 0)
         if loss_stage <= 1:
@@ -449,13 +449,13 @@ def main(writer, name, batch_size=256):
             if whether_test:
                 test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        if i > 1 and i <= 3:
-            loss_stage = 1
-        elif i > 3:
-            loss_stage = 2
+        # if i > 1 and i <= 3:
+        #     loss_stage = 1
+        # elif i > 3:
+        #     loss_stage = 2
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-no-curriculum'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
