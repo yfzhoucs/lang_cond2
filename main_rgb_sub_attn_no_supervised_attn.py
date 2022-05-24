@@ -138,11 +138,12 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss = loss0 + loss1 + loss2
             loss_attn = loss_attn + loss_attn_layer3
 
-            print(f'{loss_target_pos_attn.item():.2f}')
-            print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
-            print('obj1 g_t_', target_pos[0].detach().cpu().numpy())
-            print('obj2 pred', target_position_pred[1].detach().cpu().numpy())
-            print('obj2 g_t_', target_pos[1].detach().cpu().numpy())
+            print(f'{loss_target_pos_attn.item():.2f} {loss_ee_img_attn.item():.2f} {loss_attn_layer1.item():.2f} {loss_attn_layer2.item():.2f} {loss_attn_layer3.item():.2f}')
+            writer.add_scalar('train loss attn/tarpos', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/eepos', loss_ee_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer1', loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer2', loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer3', loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
 
         if stage >= 2:
             # Attention Supervision for Target Pos, EEF Pos, Command
@@ -383,7 +384,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk3'
+    data_root_path = r'/mnt/disk2'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -399,13 +400,14 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_0/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_1/'),
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120)
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_test/')], random=True, length_total=120)
+    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=True, length_total=120)
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -418,7 +420,7 @@ def main(writer, name, batch_size=256):
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_test/')], random=False, length_total=120)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=False, length_total=120)
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -456,6 +458,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-no-supervised-attn'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-no-supervised-attn-800-demos'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

@@ -401,7 +401,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk1'
+    data_root_path = r'/mnt/disk2'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -417,13 +417,14 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_0/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_1/'),
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120)
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_test/')], random=True, length_total=120)
+    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=True, length_total=120)
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -436,7 +437,7 @@ def main(writer, name, batch_size=256):
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_test/')], random=False, length_total=120)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=False, length_total=120)
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -455,9 +456,9 @@ def main(writer, name, batch_size=256):
     loss_stage = 0
     for i in range(0, 300):
 
-        if i > 0 and i <= 2:
+        if i > 2 and i <= 4:
             loss_stage = 1
-        elif i > 2:
+        elif i > 4:
             loss_stage = 2
 
         whether_test = ((i % 10) == 0)
@@ -476,6 +477,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-range-supervised-attn'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-range-supervised-attn-800-demos-curriculum-as-before'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
