@@ -383,7 +383,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk2'
+    data_root_path = r'/mnt/disk1'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -436,7 +436,7 @@ def main(writer, name, batch_size=256):
     # train n epoches
     loss_stage = 1
     for i in range(0, 300):
-        whether_test = ((i % 2) == 0)
+        whether_test = ((i % 10) == 0)
         if loss_stage <= 1:
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
@@ -456,6 +456,6 @@ def main(writer, name, batch_size=256):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-no-supervised-attn-fast-gripper'
+    name = 'train-12-rgb-sub-attn-no-supervised-attn-fast-gripper-take2'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
