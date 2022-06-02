@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_all_delta_action_fast_gripper import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import time
 import random
 import clip
+import re
 
 
 if torch.cuda.is_available():
@@ -41,6 +42,18 @@ def attn_loss(attn_map, supervision, criterion, scale):
     return loss
 
 
+def range_supervised_attn_loss(obj_xy, attn_map, slot_idx, criterion):
+    loss = 0
+    img_attn = 0
+    for i in [-1, 0, 1]:
+        for j in [-1, 0, 1]:
+            new_xy = obj_xy + np.array([i, j]) * 7
+            new_xy[new_xy < 0] = 0
+            new_xy[new_xy > 223] = 223
+            attn_index = pixel_position_to_attn_index(new_xy, attn_map_offset=5)
+            img_attn = img_attn + torch.gather(attn_map[:, slot_idx, :], 1, attn_index)
+    loss = criterion(img_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device)) * 5000
+    return loss
 
 def train(writer, name, epoch_idx, data_loader, model, 
     optimizer, scheduler, criterion, ckpt_path, save_ckpt, stage,
@@ -114,10 +127,12 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Attention Supervision for Target Pos
         target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index_tar)
         loss_target_pos_attn = criterion(target_pos_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
+        # loss_target_pos_attn = range_supervised_attn_loss(target_xy, attn_map2, 0, criterion)
 
         # Attention Supervision for EE from img
         ee_img_attn = torch.gather(attn_map2[:, 3, :], 1, attn_index_ee)
         loss_ee_img_attn = criterion(ee_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
+        # loss_ee_img_attn = range_supervised_attn_loss(ee_xy, attn_map2, 3, criterion)
 
         # Attention Loss
         loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
@@ -138,11 +153,12 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss = loss0 + loss1 + loss2
             loss_attn = loss_attn + loss_attn_layer3
 
-            print(f'{loss_target_pos_attn.item():.2f}')
-            print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
-            print('obj1 g_t_', target_pos[0].detach().cpu().numpy())
-            print('obj2 pred', target_position_pred[1].detach().cpu().numpy())
-            print('obj2 g_t_', target_pos[1].detach().cpu().numpy())
+            print(f'{loss_target_pos_attn.item():.2f} {loss_ee_img_attn.item():.2f} {loss_attn_layer1.item():.2f} {loss_attn_layer2.item():.2f} {loss_attn_layer3.item():.2f}')
+            writer.add_scalar('train loss attn/tarpos', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/eepos', loss_ee_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer1', loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer2', loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train loss attn/layer3', loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
 
         if stage >= 2:
             # Attention Supervision for Target Pos, EEF Pos, Command
@@ -161,7 +177,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss = loss + loss4
             print('loss traj', loss4.item())
 
-        # loss = loss + loss_attn
+        loss = loss + loss_attn
 
 
         # Backward pass
@@ -214,6 +230,9 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 
 def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_size, stage, print_attention_map=False, train_split=False):
+    if stage == 0:
+        return
+
     with torch.no_grad():
         model.eval()
         error_trajectory = 0
@@ -391,24 +410,46 @@ def main(writer, name, batch_size=256):
     ckpt = None
 
     # load model
-    model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12, input_nc=3)
+    model = Backbone(img_size=224, embedding_size=192, num_traces_in=8, num_traces_out=10, num_weight_points=12, input_nc=3)
     if ckpt is not None:
-        model.load_state_dict(torch.load(ckpt), strict=True)
+        ckpt_instance = torch.load(ckpt)
+        model.load_state_dict(ckpt_instance['model'], strict=True)
+
+    do_not_load = [
+        'controller.*',
+        'joints_encoder.*',
+        'ee_pos2_slot.*',
+        # 'visual_encoder.*',
+        # 'visual_encoder_narrower.*',
+        # 'img_embed_merge_pos_embed.*',
+        # ''
+    ]
+    pretrained_dict = torch.load(os.path.join(ckpt_path, 'train-12-rgb-sub-attn-fast-gripper-abs-action/440000.pth'))['model']
+    # 1. filter out unnecessary keys
+    generic_re = re.compile('|'.join(do_not_load))
+    pretrained_dict = {k:pretrained_dict[k] for k in pretrained_dict if not re.match(generic_re, k)}
+    # 2. overwrite entries in the existing state dict
+    pretrained_dict.update(pretrained_dict)
+    # 3. load the new state dict
+    model.load_state_dict(pretrained_dict, strict=False)
+
+    for param in model.parameters():
+        param.requires_grad = True
 
     model = model.to(device)
 
     # load data
     data_dirs = [
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_0/'),
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_1/'),
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_2/'),
-        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_3/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_0/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_1/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_2/'),
+        os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_3/'),
     ]
-    dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120)
+    dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120, normalize='panda')
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=True, length_total=120)
+    dataset_test = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_4/')], random=True, length_total=120, normalize='panda')
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -417,11 +458,11 @@ def main(writer, name, batch_size=256):
     #                                       shuffle=True, num_workers=8,
     #                                       collate_fn=pad_collate_xy_lang)
     
-    dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120)
+    dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120, normalize='panda')
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
-    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_4/')], random=False, length_total=120)
+    dataset_test_dmp = DMPDatasetEERandTarXYLang([os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_4/')], random=False, length_total=120, normalize='panda')
     data_loader_test_dmp = torch.utils.data.DataLoader(dataset_test_dmp, batch_size=batch_size,
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
@@ -437,28 +478,28 @@ def main(writer, name, batch_size=256):
     print('loaded')
 
     # train n epoches
-    loss_stage = 1
-    for i in range(0, 300):
+    loss_stage = 0
+    for i in range(0, 1000):
+
         whether_test = ((i % 10) == 0)
         if loss_stage <= 1:
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True)
+                test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
         else:
             loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True)
+                test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
         if i > 1 and i <= 3:
             loss_stage = 1
         elif i > 3:
             loss_stage = 2
 
-
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-no-supervised-attn-fast-gripper-take3'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-transfer-to-panda-load-visual-320-demos'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
