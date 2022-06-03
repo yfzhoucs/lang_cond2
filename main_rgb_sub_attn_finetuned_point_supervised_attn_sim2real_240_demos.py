@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -139,8 +139,8 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss = 0
 
         if stage >= 1:
-            loss0 = criterion(target_position_pred, target_pos)
-            loss1 = criterion(displacement_pred, displacement)
+            loss0 = criterion(target_position_pred[:, :3], target_pos[:, :3])
+            loss1 = criterion(displacement_pred[:, :3], displacement[:, :3])
             loss2 = criterion(ee_pos_pred, ee_pos)
 
             supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]]]
@@ -440,10 +440,12 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        os.path.join(data_root_path, 'dataset/dataset_grid/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_1/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_2/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_3/'),
+        '/mnt/disk1/dataset/data_real_matched_q_grid/',
+        '/mnt/disk1/dataset/data_real_matched_q/',
+        '/mnt/disk1/dataset/data_real_unmatched_q/',
+    ]
+    data_dirs_val = [
+        '/mnt/disk1/dataset/data_real_only_tarpos_unmatched_q/',
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120, normalize='separate')
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
@@ -452,6 +454,11 @@ def main(writer, name, batch_size=256):
     
     dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120, normalize='separate')
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
+                                          shuffle=True, num_workers=24,
+                                          collate_fn=pad_collate_xy_lang)
+
+    dataset_val = DMPDatasetEERandTarXYLang(data_dirs_val, random=False, length_total=120, normalize='separate')
+    data_loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size,
                                           shuffle=True, num_workers=24,
                                           collate_fn=pad_collate_xy_lang)
 
@@ -470,13 +477,13 @@ def main(writer, name, batch_size=256):
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_train, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
+                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
         else:
             loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_train_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
+                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
         if i > 1 and i <= 3:
             loss_stage = 1
@@ -484,6 +491,6 @@ def main(writer, name, batch_size=256):
             loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-80-demos-take2'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

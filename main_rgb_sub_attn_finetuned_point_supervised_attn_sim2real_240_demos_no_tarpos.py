@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -111,9 +111,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         if stage == 0:
             attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
         elif stage == 1:
-            target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
+            _, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
         else:
-            target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+            _, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
 
 
         # Attention Supervision for layer1
@@ -125,9 +125,8 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss_attn_layer2 = attn_loss(attn_map2, supervision_layer2, criterion, scale=5000)
         
         # Attention Supervision for Target Pos
-        target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index_tar)
-        loss_target_pos_attn = criterion(target_pos_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
-        # loss_target_pos_attn = range_supervised_attn_loss(target_xy, attn_map2, 0, criterion)
+        # target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index_tar)
+        # loss_target_pos_attn = criterion(target_pos_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
 
         # Attention Supervision for EE from img
         ee_img_attn = torch.gather(attn_map2[:, 3, :], 1, attn_index_ee)
@@ -135,26 +134,26 @@ def train(writer, name, epoch_idx, data_loader, model,
         # loss_ee_img_attn = range_supervised_attn_loss(ee_xy, attn_map2, 3, criterion)
 
         # Attention Loss
-        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
+        loss_attn = loss_attn_layer1 + loss_attn_layer2  + loss_ee_img_attn #+ loss_target_pos_attn
         loss = 0
 
         if stage >= 1:
-            loss0 = criterion(target_position_pred, target_pos)
-            loss1 = criterion(displacement_pred, displacement)
+            # loss0 = criterion(target_position_pred[:, :3], target_pos[:, :3])
+            # loss1 = criterion(displacement_pred[:, :3], displacement[:, :3])
             loss2 = criterion(ee_pos_pred, ee_pos)
 
             supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]]]
             loss_attn_layer3 = attn_loss(attn_map3, supervision_layer3, criterion, scale=5000)
 
-            writer.add_scalar('train loss tar pos', loss0.item(), global_step=epoch_idx * len(data_loader) + idx)
-            writer.add_scalar('train displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
+            # writer.add_scalar('train loss tar pos', loss0.item(), global_step=epoch_idx * len(data_loader) + idx)
+            # writer.add_scalar('train displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
 
-            loss = loss0 + loss1 + loss2
+            loss = loss2
             loss_attn = loss_attn + loss_attn_layer3
 
-            print(f'{loss_target_pos_attn.item():.2f} {loss_ee_img_attn.item():.2f} {loss_attn_layer1.item():.2f} {loss_attn_layer2.item():.2f} {loss_attn_layer3.item():.2f}')
-            writer.add_scalar('train loss attn/tarpos', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
+            # print(f'{loss_target_pos_attn.item():.2f} {loss_ee_img_attn.item():.2f} {loss_attn_layer1.item():.2f} {loss_attn_layer2.item():.2f} {loss_attn_layer3.item():.2f}')
+            # writer.add_scalar('train loss attn/tarpos', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train loss attn/eepos', loss_ee_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train loss attn/layer1', loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train loss attn/layer2', loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
@@ -190,25 +189,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         if stage == 0:
             print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}')
         elif stage == 1:
-            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}')
+            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l2 {loss2.item():.2f}')
         else:
-            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}, l4 {loss4.item():.2f}')
-
-        # Print Attention Map
-        if print_attention_map:
-         
-            print(target[0])
-            print(target_xy[0])
-            print(target_pos[0])
-            attn_map = np.zeros((785,))
-            attn_map[attn_index[0]] = 1
-            fig = plt.figure()
-            fig.add_subplot(1, 2, 1)
-            plt.imshow(attn_map[1:785].reshape((28, 28)))
-            # plt.colorbar()
-            fig.add_subplot(1, 2, 2)
-            plt.imshow(img.detach().cpu().numpy()[0])
-            plt.show()
+            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l2 {loss2.item():.2f}, l4 {loss4.item():.2f}')
 
         # Save checkpoint
         if save_ckpt:
@@ -418,7 +401,7 @@ def main(writer, name, batch_size=256):
     do_not_load = [
         'controller.*',
         'joints_encoder.*',
-        'ee_pos2_slot.*',
+        # 'ee_pos2_slot.*',
         # 'visual_encoder.*',
         # 'visual_encoder_narrower.*',
         # 'img_embed_merge_pos_embed.*',
@@ -440,10 +423,12 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        os.path.join(data_root_path, 'dataset/dataset_grid/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_1/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_2/'),
-        # os.path.join(data_root_path, 'dataset/mujoco_dataset_pick_push_RGBD_different_angles_fast_gripper_224_panda_3/'),
+        '/mnt/disk1/dataset/data_real_matched_q_grid/',
+        '/mnt/disk1/dataset/data_real_matched_q/',
+        '/mnt/disk1/dataset/data_real_unmatched_q/',
+    ]
+    data_dirs_val = [
+        '/mnt/disk1/dataset/data_real_only_tarpos_unmatched_q/',
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120, normalize='separate')
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
@@ -452,6 +437,11 @@ def main(writer, name, batch_size=256):
     
     dataset_train_dmp = DMPDatasetEERandTarXYLang(data_dirs, random=False, length_total=120, normalize='separate')
     data_loader_train_dmp = torch.utils.data.DataLoader(dataset_train_dmp, batch_size=batch_size,
+                                          shuffle=True, num_workers=24,
+                                          collate_fn=pad_collate_xy_lang)
+
+    dataset_val = DMPDatasetEERandTarXYLang(data_dirs_val, random=False, length_total=120, normalize='separate')
+    data_loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size,
                                           shuffle=True, num_workers=24,
                                           collate_fn=pad_collate_xy_lang)
 
@@ -470,13 +460,13 @@ def main(writer, name, batch_size=256):
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_train, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
+                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
         else:
             loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
-                test(writer, name, i + 1, data_loader_train_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
+                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
         if i > 1 and i <= 3:
             loss_stage = 1
@@ -484,6 +474,6 @@ def main(writer, name, batch_size=256):
             loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-80-demos-take2'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos-no-tarpos'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
