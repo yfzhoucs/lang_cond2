@@ -1,0 +1,6 @@
+git+https://github.com/openai/CLIP.git
+torch
+numpy
+scikit-image
+tensorboard
+matplotlib
