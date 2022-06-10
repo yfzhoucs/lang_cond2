@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed_stages import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -177,7 +177,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss = loss + loss4
             print('loss traj', loss4.item())
 
-        loss = loss + loss_attn
+        loss = loss #+ loss_attn
 
 
         # Backward pass
@@ -214,7 +214,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         if save_ckpt:
             if not os.path.isdir(os.path.join(ckpt_path, name)):
                 os.mkdir(os.path.join(ckpt_path, name))
-            if global_step % 1000 == 0:
+            if global_step % 10000 == 0:
                 checkpoint = {
                     'model': model.state_dict(),
                     'optimizer': optimizer.state_dict()
@@ -402,7 +402,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk1'
+    data_root_path = r'/mnt/disk3'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -419,9 +419,9 @@ def main(writer, name, batch_size=256):
         'controller.*',
         'joints_encoder.*',
         'ee_pos2_slot.*',
-        'visual_encoder.*',
-        'visual_encoder_narrower.*',
-        'img_embed_merge_pos_embed.*',
+        # 'visual_encoder.*',
+        # 'visual_encoder_narrower.*',
+        # 'img_embed_merge_pos_embed.*',
         # ''
     ]
     pretrained_dict = torch.load(os.path.join(ckpt_path, 'train-12-rgb-sub-attn-fast-gripper-abs-action/440000.pth'))['model']
@@ -440,12 +440,12 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        '/mnt/disk1/dataset/data_real_matched_q_grid/',
-        '/mnt/disk1/dataset/data_real_matched_q/',
-        '/mnt/disk1/dataset/data_real_unmatched_q/',
+        '/mnt/disk3/dataset/data_real_matched_q_grid/',
+        '/mnt/disk3/dataset/data_real_matched_q/',
+        '/mnt/disk3/dataset/data_real_unmatched_q/',
     ]
     data_dirs_val = [
-        '/mnt/disk1/dataset/data_real_only_tarpos_unmatched_q/',
+        '/mnt/disk3/dataset/data_real_only_tarpos_unmatched_q/',
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120, normalize='separate')
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
@@ -469,10 +469,10 @@ def main(writer, name, batch_size=256):
     print('loaded')
 
     # train n epoches
-    loss_stage = 0
+    loss_stage = 1
     for i in range(0, 1000):
 
-        whether_test = ((i % 1) == 0)
+        whether_test = ((i % 10) == 0)
         if loss_stage <= 1:
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
@@ -485,12 +485,12 @@ def main(writer, name, batch_size=256):
             if whether_test:
                 test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        if i > 1 and i <= 3:
+        if i > 1 and i <= 15:
             loss_stage = 1
-        # elif i > 3:
-        #     loss_stage = 2
+        elif i > 15:
+            loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos-stage-0-of-traj-and-curri-not-loading-vision-take2'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-no-supervised-attn-sim2real-240-demos-15-epochs-on-vision'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

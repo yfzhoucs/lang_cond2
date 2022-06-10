@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
 from models.backbone_rgbd_sub_attn import Backbone
-from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed_stages import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_sim2real_load_preprocessed_all_stages import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -134,9 +134,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss_ee_img_attn = criterion(ee_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
         # loss_ee_img_attn = range_supervised_attn_loss(ee_xy, attn_map2, 3, criterion)
 
-        # Attention Loss
-        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
-        loss = 0
+        # # Attention Loss
+        # loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
+        # loss = 0
 
         if stage >= 1:
             loss0 = criterion(target_position_pred[:, :3], target_pos[:, :3])
@@ -150,8 +150,11 @@ def train(writer, name, epoch_idx, data_loader, model,
             writer.add_scalar('train displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
 
-            loss = loss0 + loss1 + loss2
-            loss_attn = loss_attn + loss_attn_layer3
+            loss = loss2
+            loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_attn_layer3 + loss_ee_img_attn
+            if stage == 1:
+                loss = loss + loss0 + loss1
+                loss_attn = loss_attn + loss_ee_img_attn
 
             print(f'{loss_target_pos_attn.item():.2f} {loss_ee_img_attn.item():.2f} {loss_attn_layer1.item():.2f} {loss_attn_layer2.item():.2f} {loss_attn_layer3.item():.2f}')
             writer.add_scalar('train loss attn/tarpos', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
@@ -177,7 +180,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss = loss + loss4
             print('loss traj', loss4.item())
 
-        loss = loss + loss_attn
+        # loss = loss + loss_attn
 
 
         # Backward pass
@@ -214,7 +217,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         if save_ckpt:
             if not os.path.isdir(os.path.join(ckpt_path, name)):
                 os.mkdir(os.path.join(ckpt_path, name))
-            if global_step % 1000 == 0:
+            if global_step % 3000 == 0:
                 checkpoint = {
                     'model': model.state_dict(),
                     'optimizer': optimizer.state_dict()
@@ -323,10 +326,10 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
             # Print Attention Map
             if print_attention_map:
                 if stage > 1:
-                    trajectory_pred = trajectory_pred * std_traj_gripper_centered
+                    trajectory_pred = trajectory_pred * std_traj_gripper
                     target_position_pred = target_position_pred * std
                     target_pos = target_pos * std
-                    ee_traj = ee_traj * std_traj_gripper_centered
+                    ee_traj = ee_traj * std_traj_gripper
                     gripper = (joint_angles_traj[0, -1, :].detach().cpu() * std_traj_gripper[-1]).numpy()
                     gripper_pred = trajectory_pred[0, :, 9].detach().cpu().numpy()
                     gripper_x = np.arange(len(gripper))
@@ -402,7 +405,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 def main(writer, name, batch_size=256):
     # data_root_path = r'/data/Documents/yzhou298'
     # data_root_path = r'/share/yzhou298'
-    data_root_path = r'/mnt/disk1'
+    data_root_path = r'/mnt/disk3'
     ckpt_path = os.path.join(data_root_path, r'ckpts/')
     save_ckpt = True
     supervised_attn = True
@@ -415,23 +418,23 @@ def main(writer, name, batch_size=256):
         ckpt_instance = torch.load(ckpt)
         model.load_state_dict(ckpt_instance['model'], strict=True)
 
-    do_not_load = [
-        'controller.*',
-        'joints_encoder.*',
-        'ee_pos2_slot.*',
-        'visual_encoder.*',
-        'visual_encoder_narrower.*',
-        'img_embed_merge_pos_embed.*',
-        # ''
-    ]
-    pretrained_dict = torch.load(os.path.join(ckpt_path, 'train-12-rgb-sub-attn-fast-gripper-abs-action/440000.pth'))['model']
-    # 1. filter out unnecessary keys
-    generic_re = re.compile('|'.join(do_not_load))
-    pretrained_dict = {k:pretrained_dict[k] for k in pretrained_dict if not re.match(generic_re, k)}
-    # 2. overwrite entries in the existing state dict
-    pretrained_dict.update(pretrained_dict)
-    # 3. load the new state dict
-    model.load_state_dict(pretrained_dict, strict=False)
+    # do_not_load = [
+    #     # 'controller.*',
+    #     # 'joints_encoder.*',
+    #     # 'ee_pos2_slot.*',
+    #     # 'visual_encoder.*',
+    #     # 'visual_encoder_narrower.*',
+    #     # 'img_embed_merge_pos_embed.*',
+    #     # ''
+    # ]
+    pretrained_dict = torch.load(os.path.join(ckpt_path, 'train-12-rgb-sub-attn-fast-gripper-abs-action-no-supervised-attn-sim2real-240-demos-stage-0-of-traj-all-stage-curri-load-no-sup-attn-corrected-json-load-all-another-way-of-load-all/9000.pth'))['model']
+    # # 1. filter out unnecessary keys
+    # generic_re = re.compile('|'.join(do_not_load))
+    # pretrained_dict = {k:pretrained_dict[k] for k in pretrained_dict if not re.match(generic_re, k)}
+    # # 2. overwrite entries in the existing state dict
+    # pretrained_dict.update(pretrained_dict)
+    # # 3. load the new state dict
+    model.load_state_dict(pretrained_dict, strict=True)
 
     for param in model.parameters():
         param.requires_grad = True
@@ -440,12 +443,12 @@ def main(writer, name, batch_size=256):
 
     # load data
     data_dirs = [
-        '/mnt/disk1/dataset/data_real_matched_q_grid/',
-        '/mnt/disk1/dataset/data_real_matched_q/',
-        '/mnt/disk1/dataset/data_real_unmatched_q/',
+        '/mnt/disk3/dataset/data_real_matched_q_grid/',
+        '/mnt/disk3/dataset/data_real_matched_q/',
+        '/mnt/disk3/dataset/data_real_unmatched_q/',
     ]
     data_dirs_val = [
-        '/mnt/disk1/dataset/data_real_only_tarpos_unmatched_q/',
+        '/mnt/disk3/dataset/data_real_only_tarpos_unmatched_q/',
     ]
     dataset_train = DMPDatasetEERandTarXYLang(data_dirs, random=True, length_total=120, normalize='separate')
     data_loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
@@ -469,28 +472,32 @@ def main(writer, name, batch_size=256):
     print('loaded')
 
     # train n epoches
-    loss_stage = 0
-    for i in range(0, 1000):
+    loss_stage = 2
+    i = 0
+    test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True)
 
-        whether_test = ((i % 1) == 0)
-        if loss_stage <= 1:
-            loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
-                criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
-            if whether_test:
-                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
-                # test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
-        else:
-            loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
-                criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
-            if whether_test:
-                test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
-                # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        if i > 1 and i <= 3:
-            loss_stage = 1
-        # elif i > 3:
-        #     loss_stage = 2
+    # loss_stage = 1
+    # for i in range(0, 1000):
+
+    #     whether_test = ((i % 3) == 0)
+    #     if loss_stage <= 1:
+    #         loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
+    #             criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
+    #         if whether_test:
+    #             test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train), loss_stage, print_attention_map=False)
+    #             # test(writer, name, i + 1, data_loader_train_split, model, criterion, len(data_loader_train), loss_stage, print_attention_map=True, train_split=True)
+    #     else:
+    #         loss_stage = train(writer, name, i, data_loader_train_dmp, model, optimizer, scheduler,
+    #             criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
+    #         if whether_test:
+    #             test(writer, name, i + 1, data_loader_val, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
+    #             # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
+    #     if i > 1 and i <= 3:
+    #         loss_stage = 1
+    #     elif i > 3:
+    #         loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos-stage-0-of-traj-and-curri-not-loading-vision-take2'
+    name = 'test-12-rgb-sub-attn-fast-gripper-abs-action-no-supervised-attn-sim2real-240-demos-stage-0-of-traj-all-stage-curri-load-no-sup-attn-corrected-json-load-all-another-way-of-load-all'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

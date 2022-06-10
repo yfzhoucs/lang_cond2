@@ -214,7 +214,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         if save_ckpt:
             if not os.path.isdir(os.path.join(ckpt_path, name)):
                 os.mkdir(os.path.join(ckpt_path, name))
-            if global_step % 10000 == 0:
+            if global_step % 1000 == 0:
                 checkpoint = {
                     'model': model.state_dict(),
                     'optimizer': optimizer.state_dict()
@@ -491,6 +491,6 @@ def main(writer, name, batch_size=256):
         #     loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos-stage-0-of-traj-and-curri'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-point-supervised-attn-sim2real-240-demos-stage-0-of-traj-and-curri-take2'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
