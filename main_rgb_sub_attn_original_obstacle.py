@@ -1,7 +1,7 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
-from models.backbone_rgbd_sub_attn_obstacle import Backbone
-from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_obstacle import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
+from models.backbone_rgbd_sub_attn import Backbone
+from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
@@ -48,7 +48,7 @@ def train(writer, name, epoch_idx, data_loader, model,
     model.train()
     criterion2 = nn.L1Loss(reduction='none')
 
-    for idx, (img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement, obstacle_pos, obstacle_xy) in enumerate(data_loader):
+    for idx, (img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement) in enumerate(data_loader):
         global_step = epoch_idx * len(data_loader) + idx
 
         # Prepare data
@@ -61,14 +61,12 @@ def train(writer, name, epoch_idx, data_loader, model,
         target_pos = target_pos.to(device)
         phis = phis.to(device)
         mask = mask.to(device)
-        attn_index_tar = pixel_position_to_attn_index(target_xy, attn_map_offset=6)
-        attn_index_ee = pixel_position_to_attn_index(ee_xy, attn_map_offset=6)
-        attn_index_obs = pixel_position_to_attn_index(obstacle_xy, attn_map_offset=6)
+        attn_index_tar = pixel_position_to_attn_index(target_xy, attn_map_offset=5)
+        attn_index_ee = pixel_position_to_attn_index(ee_xy, attn_map_offset=5)
         sentence = sentence.to(device)
         joint_angles_traj = joint_angles_traj.to(device)
         ee_traj = torch.cat((ee_traj, joint_angles_traj[:, -1:, :]), axis=1)
         displacement = displacement.to(device)
-        obstacle_pos = obstacle_pos.to(device)
 
         # print(img.shape)
 
@@ -100,9 +98,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         if stage == 0:
             attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
         elif stage == 1:
-            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
+            target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
         else:
-            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+            target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
 
 
         # Attention Supervision for layer1
@@ -129,33 +127,26 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss0 = criterion(target_position_pred, target_pos)
             loss1 = criterion(displacement_pred, displacement)
             loss2 = criterion(ee_pos_pred, ee_pos)
-            loss5 = criterion(obstacle_pred, obstacle_pos)
 
-            # Attention Supervision for layer 3
             supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]]]
             loss_attn_layer3 = attn_loss(attn_map3, supervision_layer3, criterion, scale=5000)
-
-            # Attention Supervision for obstacle from img
-            obs_img_attn = torch.gather(attn_map3[:, 5, :], 1, attn_index_obs)
-            loss_obs_img_attn = criterion(obs_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
 
             writer.add_scalar('train/loss tar pos', loss0.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
-            writer.add_scalar('train/loss obstacle pos', loss5.item(), global_step=epoch_idx * len(data_loader) + idx)
 
-            loss = loss0 + loss1 + loss2 + loss5
-            loss_attn = loss_attn + loss_attn_layer3 + loss_obs_img_attn
+            loss = loss0 + loss1 + loss2
+            loss_attn = loss_attn + loss_attn_layer3
 
-            # print(f'{loss_target_pos_attn.item():.2f}')
-            # print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
-            # print('obj1 g_t_', target_pos[0].detach().cpu().numpy())
-            # print('obj2 pred', target_position_pred[1].detach().cpu().numpy())
-            # print('obj2 g_t_', target_pos[1].detach().cpu().numpy())
+            print(f'{loss_target_pos_attn.item():.2f}')
+            print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
+            print('obj1 g_t_', target_pos[0].detach().cpu().numpy())
+            print('obj2 pred', target_position_pred[1].detach().cpu().numpy())
+            print('obj2 g_t_', target_pos[1].detach().cpu().numpy())
 
         if stage >= 2:
             # Attention Supervision for Target Pos, EEF Pos, Command
-            traj_attn = attn_map4[:, 4, 0] + attn_map4[:, 4, 1] + attn_map4[:, 4, 2] + attn_map4[:, 4, -1] + attn_map4[:, 4, -2] + attn_map4[:, 4, 5]
+            traj_attn = attn_map4[:, 4, 0] + attn_map4[:, 4, 1] + attn_map4[:, 4, 2] + attn_map4[:, 4, -1] + attn_map4[:, 4, -2]
             loss_traj_attn = criterion(traj_attn, torch.ones(attn_map4.shape[0], 1, dtype=torch.float32).to(device)) * 5000
             loss_attn = loss_attn + loss_traj_attn
 
@@ -179,13 +170,13 @@ def train(writer, name, epoch_idx, data_loader, model,
         optimizer.step()
 
         # Log and print
-        writer.add_scalar('train loss', loss.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train/loss', loss.item(), global_step=epoch_idx * len(data_loader) + idx)
         if stage == 0:
             print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}')
         elif stage == 1:
-            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}, l5 {loss5.item():.2f}')
+            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}')
         else:
-            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}, l4 {loss4.item():.2f}, l5 {loss5.item():.2f}')
+            print(f'epoch {epoch_idx}, step {idx}, stage {stage}, l_all {loss.item():.2f}, l0 {loss0.item():.2f}, l1 {loss1.item():.2f}, l2 {loss2.item():.2f}, l4 {loss4.item():.2f}')
 
         # Print Attention Map
         if print_attention_map:
@@ -248,7 +239,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
         std_displacement = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1])
         std_traj_gripper_centered = np.array([7.16058815e-02, 5.89546881e-02, 6.53571811e-02, 1, 1, 1, 1, 1, 1, 0.23799407366571126])
         
-        for idx, (img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement, obstacle_pos, obstacle_xy) in enumerate(data_loader):
+        for idx, (img, target, joint_angles, ee_pos, ee_traj, ee_xy, length, target_pos, phis, mask, target_xy, sentence, joint_angles_traj, displacement) in enumerate(data_loader):
             global_step = epoch_idx * len(data_loader) + idx
 
             # Prepare data
@@ -264,16 +255,14 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
             sentence = sentence.to(device)
             joint_angles_traj = joint_angles_traj.to(device)
             ee_traj = torch.cat((ee_traj, joint_angles_traj[:, -1:, :]), axis=1)
-            obstacle_pos = obstacle_pos.to(device)
-            attn_index_obs = pixel_position_to_attn_index(obstacle_xy, attn_map_offset=6)
 
             # Forward pass
             if stage == 0:
                 attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
             elif stage == 1:
-                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
+                target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
             else:
-                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+                target_position_pred, ee_pos_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
 
 
             if stage >= 1:
@@ -404,13 +393,8 @@ def main(writer, name, batch_size=96):
     # load model
     model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12, input_nc=3)
     if ckpt is not None:
-        state_dict = torch.load(ckpt)['model']
-        seg_embed = state_dict['seg_embed1.weight']
-        add_on_embed = nn.Embedding(1, seg_embed.shape[1]).weight.clone().detach().requires_grad_(True).to(device)
-        seg_embed = torch.cat((seg_embed, add_on_embed), axis=0)
-        state_dict['seg_embed_1.weight'] = seg_embed
-        print(seg_embed.shape)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(torch.load(ckpt)['model'], strict=True)
+
     model = model.to(device)
 
     # load data
@@ -476,6 +460,6 @@ def main(writer, name, batch_size=96):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-obstacle-mini-part-not-in-the-way'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-original-obstacle-mini-part-not-in-the-way'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

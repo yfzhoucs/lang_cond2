@@ -476,6 +476,6 @@ def main(writer, name, batch_size=96):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-obstacle-mini-part-not-in-the-way'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-obstacle-mini-part-not-in-the-way-potential'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
