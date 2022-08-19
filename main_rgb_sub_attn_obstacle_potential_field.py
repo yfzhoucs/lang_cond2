@@ -1,6 +1,6 @@
 import numpy as np
 # np.set_printoptions(precision=3, suppress=True)
-from models.backbone_rgbd_sub_attn_obstacle import Backbone
+from models.backbone_rgbd_sub_attn_obstacle_potential_field import Backbone
 from utils.load_data_rgb_abs_action_fast_gripper_finetuned_attn_obstacle import DMPDatasetEERandTarXYLang, pad_collate_xy_lang
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -98,11 +98,11 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Forward pass
         optimizer.zero_grad()
         if stage == 0:
-            attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
+            obstacle_pred, attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
         elif stage == 1:
-            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
+            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, potential_vector_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
         else:
-            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+            target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, potential_vector_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
 
 
         # Attention Supervision for layer1
@@ -121,31 +121,37 @@ def train(writer, name, epoch_idx, data_loader, model,
         ee_img_attn = torch.gather(attn_map2[:, 3, :], 1, attn_index_ee)
         loss_ee_img_attn = criterion(ee_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
 
+        # Attention Supervision for obstacle from img
+        obs_img_attn = torch.gather(attn_map2[:, 5, :], 1, attn_index_obs)
+        loss_obs_img_attn = criterion(obs_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
+
+        # Aux task loss for obstacle pos prediction
+        loss5 = criterion(obstacle_pred, obstacle_pos)
+
         # Attention Loss
-        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
-        loss = 0
+        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn + loss_obs_img_attn
+        loss = loss5
+
+        writer.add_scalar('train/loss obstacle pos', loss5.item(), global_step=epoch_idx * len(data_loader) + idx)
 
         if stage >= 1:
             loss0 = criterion(target_position_pred, target_pos)
             loss1 = criterion(displacement_pred, displacement)
             loss2 = criterion(ee_pos_pred, ee_pos)
-            loss5 = criterion(obstacle_pred, obstacle_pos)
+            loss6 = criterion(potential_vector_pred, ee_pos - obstacle_pos)
 
             # Attention Supervision for layer 3
-            supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]]]
+            supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [3, [2, 3, 5]], [4, [4]]]
             loss_attn_layer3 = attn_loss(attn_map3, supervision_layer3, criterion, scale=5000)
 
-            # Attention Supervision for obstacle from img
-            obs_img_attn = torch.gather(attn_map3[:, 5, :], 1, attn_index_obs)
-            loss_obs_img_attn = criterion(obs_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
 
             writer.add_scalar('train/loss tar pos', loss0.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
-            writer.add_scalar('train/loss obstacle pos', loss5.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train/loss potential vector', loss6.item(), global_step=epoch_idx * len(data_loader) + idx)
 
-            loss = loss0 + loss1 + loss2 + loss5
-            loss_attn = loss_attn + loss_attn_layer3 + loss_obs_img_attn
+            loss = loss0 + loss1 + loss2 + loss5 + loss6
+            loss_attn = loss_attn + loss_attn_layer3
 
             # print(f'{loss_target_pos_attn.item():.2f}')
             # print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
@@ -155,7 +161,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         if stage >= 2:
             # Attention Supervision for Target Pos, EEF Pos, Command
-            traj_attn = attn_map4[:, 4, 0] + attn_map4[:, 4, 1] + attn_map4[:, 4, 2] + attn_map4[:, 4, -1] + attn_map4[:, 4, -2] + attn_map4[:, 4, 5]
+            traj_attn = attn_map4[:, 4, 0] + attn_map4[:, 4, 1] + attn_map4[:, 4, 2] + attn_map4[:, 4, 3] + attn_map4[:, 4, -1] + attn_map4[:, 4, -2]
             loss_traj_attn = criterion(traj_attn, torch.ones(attn_map4.shape[0], 1, dtype=torch.float32).to(device)) * 5000
             loss_attn = loss_attn + loss_traj_attn
 
@@ -269,11 +275,12 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 
             # Forward pass
             if stage == 0:
-                attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
+                obstacle_pred, attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
             elif stage == 1:
-                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
+                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, potential_vector_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
             else:
-                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+                target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, potential_vector_pred, attn_map, attn_map2, attn_map3, attn_map4, trajectory_pred = model(img, joint_angles, sentence, phis, stage)
+
 
 
             if stage >= 1:
