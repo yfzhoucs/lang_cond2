@@ -447,6 +447,13 @@ def main(writer, name, batch_size=96):
         para.requires_grad = False
     # Only unfreeze the needed part: obstacle token, obstacle token embeding, embed_to_obstacle_pos, embed_to_potential_field, controller
     model.obstacle_slot.requires_grad = True
+    for para in model.requests_to_queries[-1].parameters():
+        para.requires_grad = True
+    for para in model.requests_to_keys[-1].parameters():
+        para.requires_grad = True
+    for para in model.requests_to_values[-1].parameters():
+        para.requires_grad = True
+
     for para in model.seg_embed_obs.parameters():
         para.requires_grad = True
     for para in model.embed_to_obstacle_pos.parameters():
