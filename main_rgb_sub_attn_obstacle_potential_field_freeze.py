@@ -508,8 +508,8 @@ def main(writer, name, batch_size=96):
     # train n epoches
     loss_stage = 0
     for i in range(0, 300):
-        whether_test = ((i % 10) == 0)
-        if loss_stage <= 1:
+        whether_test = (((i + 1) % 10) == 0)
+        if loss_stage < 0:
             loss_stage = train(writer, name, i, data_loader_train, model, optimizer, scheduler,
                 criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=False)
             if whether_test:
@@ -530,6 +530,6 @@ def main(writer, name, batch_size=96):
 
 
 if __name__ == '__main__':
-    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-obstacle-mini-part-not-in-the-way-potential-freeze'
+    name = 'train-12-rgb-sub-attn-fast-gripper-abs-action-obstacle-mini-part-not-in-the-way-potential-freeze-debug'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)
