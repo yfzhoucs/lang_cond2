@@ -109,13 +109,13 @@ def train(writer, name, epoch_idx, data_loader, model,
         supervision_layer1 = [[0, [-1]], [1, [1]], [2, [2]], [3, [3]], [4, [4]], [5, [5]]]
         loss_attn_layer1 = attn_loss(attn_map, supervision_layer1, criterion, scale=5000)
         reverse_supervision_layer1 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
-        reverse_loss_attn_layer1 = attn_loss(attn_map, reverse_supervision_layer1, criterion, scale=5000)
+        reverse_loss_attn_layer1 = attn_loss(attn_map, reverse_supervision_layer1, criterion, scale=5000) - 5000 * 5
 
         # Attention Supervision for layer2
         supervision_layer2 = [[1, [1]], [2, [-2]], [4, [4]]]
         loss_attn_layer2 = attn_loss(attn_map2, supervision_layer2, criterion, scale=5000)
         reverse_supervision_layer2 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
-        reverse_loss_attn_layer2 = attn_loss(attn_map2, reverse_supervision_layer2, criterion, scale=5000)
+        reverse_loss_attn_layer2 = attn_loss(attn_map2, reverse_supervision_layer2, criterion, scale=5000) - 5000 * 5
         
         # # Attention Supervision for Target Pos
         # target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index_tar)
@@ -148,7 +148,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]], [5, [2, 3, 5]]]
             loss_attn_layer3 = attn_loss(attn_map3, supervision_layer3, criterion, scale=5000)
             reverse_supervision_layer3 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
-            reverse_loss_attn_layer3 = attn_loss(attn_map3, reverse_supervision_layer3, criterion, scale=5000)
+            reverse_loss_attn_layer3 = attn_loss(attn_map3, reverse_supervision_layer3, criterion, scale=5000) - 5000 * 5
 
 
             writer.add_scalar('train/loss tar pos', loss0.item(), global_step=epoch_idx * len(data_loader) + idx)

@@ -478,7 +478,7 @@ class Backbone(nn.Module):
         segment_ids = np.array(segment_ids)
         segment_ids = torch.tensor(segment_ids, dtype=torch.int32).unsqueeze(0).repeat(batch_size, 1).to(self.device)
         # if layer == 1:
-        segment_ids = self.seg_embed_1(segment_ids)
+        segment_ids = self.seg_embed_1(segment_ids) + self.seg_embed_obs(segment_ids)
         # elif layer == 2:
         #     segment_ids = self.seg_embed2(segment_ids)
         # elif layer == 3:
