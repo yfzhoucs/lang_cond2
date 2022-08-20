@@ -404,7 +404,6 @@ def main(writer, name, batch_size=96):
     # load model
     model = Backbone(img_size=224, embedding_size=192, num_traces_in=7, num_traces_out=10, num_weight_points=12, input_nc=3)
     if ckpt is not None:
-    if ckpt is not None:
         state_dict = torch.load(ckpt)['model']
         seg_embed = state_dict['seg_embed1.weight']
         add_on_embed = torch.zeros(1, seg_embed.shape[1], dtype=torch.float32).to(device)
