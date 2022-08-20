@@ -108,10 +108,14 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Attention Supervision for layer1
         supervision_layer1 = [[0, [-1]], [1, [1]], [2, [2]], [3, [3]], [4, [4]]]
         loss_attn_layer1 = attn_loss(attn_map, supervision_layer1, criterion, scale=5000)
+        reverse_supervision_layer1 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
+        reverse_loss_attn_layer1 = attn_loss(attn_map, reverse_supervision_layer1, criterion, scale=5000) - 5000 * 5
 
         # Attention Supervision for layer2
         supervision_layer2 = [[1, [1]], [2, [-2]], [4, [4]]]
         loss_attn_layer2 = attn_loss(attn_map2, supervision_layer2, criterion, scale=5000)
+        reverse_supervision_layer2 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
+        reverse_loss_attn_layer2 = attn_loss(attn_map2, reverse_supervision_layer2, criterion, scale=5000) - 5000 * 5
         
         # Attention Supervision for Target Pos
         target_pos_attn = torch.gather(attn_map2[:, 0, :], 1, attn_index_tar)
@@ -122,13 +126,13 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss_ee_img_attn = criterion(ee_img_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device)) * 5000
 
         # Attention Loss
-        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn
+        loss_attn = loss_attn_layer1 + loss_attn_layer2 + loss_target_pos_attn + loss_ee_img_attn - reverse_loss_attn_layer1 - reverse_loss_attn_layer2
         loss = 0
         
         writer.add_scalar('train_attn/loss attn layer1', loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
         writer.add_scalar('train_attn/loss attn layer2', loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
-        # writer.add_scalar('train_attn/reverse loss attn layer1', 0 - reverse_loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
-        # writer.add_scalar('train_attn/reverse loss attn layer2', 0 - reverse_loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/reverse loss attn layer1', 0 - reverse_loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/reverse loss attn layer2', 0 - reverse_loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
         writer.add_scalar('train_attn/loss_target_pos_attn', loss_target_pos_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
         writer.add_scalar('train_attn/loss_ee_img_attn', loss_ee_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
 
@@ -141,6 +145,8 @@ def train(writer, name, epoch_idx, data_loader, model,
             # Attention Supervision for layer 3
             supervision_layer3 = [[0, [0]], [1, [0, 2, 3]], [2, [2, 3]], [4, [4]]]
             loss_attn_layer3 = attn_loss(attn_map3, supervision_layer3, criterion, scale=5000)
+            reverse_supervision_layer3 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
+            reverse_loss_attn_layer3 = attn_loss(attn_map3, reverse_supervision_layer3, criterion, scale=5000) - 5000 * 5
 
             # Attention Supervision for obstacle from img
             obs_img_attn = torch.gather(attn_map3[:, 5, :], 1, attn_index_obs)
@@ -150,12 +156,12 @@ def train(writer, name, epoch_idx, data_loader, model,
             writer.add_scalar('train/displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss obstacle pos', loss5.item(), global_step=epoch_idx * len(data_loader) + idx)
-            # writer.add_scalar('train_attn/reverse loss attn layer3', 0 - reverse_loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train_attn/reverse loss attn layer3', 0 - reverse_loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train_attn/loss attn layer3', loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train_attn/loss_obs_img_attn', loss_obs_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
 
             loss = loss0 + loss1 + loss2 + loss5
-            loss_attn = loss_attn + loss_attn_layer3 + loss_obs_img_attn
+            loss_attn = loss_attn + loss_attn_layer3 + loss_obs_img_attn - reverse_loss_attn_layer3
 
             # print(f'{loss_target_pos_attn.item():.2f}')
             # print('obj1 pred', target_position_pred[0].detach().cpu().numpy())
