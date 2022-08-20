@@ -98,7 +98,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Forward pass
         optimizer.zero_grad()
         if stage == 0:
-            obstacle_pred, attn_map, attn_map2 = model(img, joint_angles, sentence, phis, stage)
+            attn_map, attn_map2, obstacle_pred = model(img, joint_angles, sentence, phis, stage)
         elif stage == 1:
             target_position_pred, ee_pos_pred, displacement_pred, obstacle_pred, potential_vector_pred, attn_map, attn_map2, attn_map3 = model(img, joint_angles, sentence, phis, stage)
         else:
@@ -106,7 +106,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 
         # Attention Supervision for layer1
-        supervision_layer1 = [[0, [-1]], [1, [1]], [2, [2]], [3, [3]], [4, [4]], [5, [5]]]
+        supervision_layer1 = [[0, [-1]], [1, [1]], [2, [2]], [3, [3]], [4, [4]]]
         loss_attn_layer1 = attn_loss(attn_map, supervision_layer1, criterion, scale=5000)
         reverse_supervision_layer1 = [[0, [5]], [1, [5]], [2, [5]], [3, [5]], [4, [5]]]
         reverse_loss_attn_layer1 = attn_loss(attn_map, reverse_supervision_layer1, criterion, scale=5000) - 5000 * 5
@@ -137,6 +137,11 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss = loss5
 
         writer.add_scalar('train/loss obstacle pos', loss5.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/loss attn layer1', loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/loss attn layer2', loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/reverse loss attn layer1', 0 - reverse_loss_attn_layer1.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/reverse loss attn layer2', 0 - reverse_loss_attn_layer2.item(), global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train_attn/loss_obs_img_attn', loss_obs_img_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
 
         if stage >= 1:
             loss0 = criterion(target_position_pred, target_pos)
@@ -155,6 +160,8 @@ def train(writer, name, epoch_idx, data_loader, model,
             writer.add_scalar('train/displacement', loss1.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss ee pos from joints', loss2.item(), global_step=epoch_idx * len(data_loader) + idx)
             writer.add_scalar('train/loss potential vector', loss6.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train_attn/reverse loss attn layer3', 0 - reverse_loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train_attn/loss attn layer3', loss_attn_layer3.item(), global_step=epoch_idx * len(data_loader) + idx)
 
             loss = loss5 + loss6
             loss_attn = loss_attn + loss_attn_layer3 - reverse_loss_attn_layer3
@@ -179,6 +186,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             weight_matrix = weight_matrix.unsqueeze(0).unsqueeze(1).repeat(ee_traj.shape[0], ee_traj.shape[1], 1).cuda()
             loss4 = (criterion2(trajectory_pred, ee_traj) * weight_matrix).sum() / (mask * weight_matrix).sum()
             writer.add_scalar('train/loss traj', loss4.item(), global_step=epoch_idx * len(data_loader) + idx)
+            writer.add_scalar('train_attn/loss attn layer4', loss_traj_attn.item(), global_step=epoch_idx * len(data_loader) + idx)
             loss = loss + loss4
             print('loss traj', loss4.item())
 
@@ -428,8 +436,11 @@ def main(writer, name, batch_size=96):
         if 'seg_embed_obs.weight' not in state_dict:
             seg_embed_obs = nn.Embedding(1, seg_embed.shape[1]).weight.clone().detach().requires_grad_(True).to(device)
             seg_embed_obs = torch.cat((torch.zeros(seg_embed.shape[0] - 1, seg_embed.shape[1]).to(device), seg_embed_obs), axis=0)
+            # seg_embed_obs = torch.zeros(seg_embed.shape[0], seg_embed.shape[1])
             state_dict['seg_embed_obs.weight'] = seg_embed_obs
-
+        # print(state_dict['obstacle_slot'].shape, type(state_dict['obstacle_slot']))
+        print(state_dict['tar_pos_slot'].shape, type(state_dict['tar_pos_slot']))
+        # state_dict['obstacle_slot'] = torch.zeros(192).to(device)
         model.load_state_dict(state_dict, strict=False)
     # Freeze the model
     for para in model.parameters():
@@ -488,7 +499,7 @@ def main(writer, name, batch_size=96):
     print('loaded')
 
     # train n epoches
-    loss_stage = 1
+    loss_stage = 0
     for i in range(0, 300):
         whether_test = ((i % 10) == 0)
         if loss_stage <= 1:
@@ -503,12 +514,12 @@ def main(writer, name, batch_size=96):
             if whether_test:
                 test(writer, name, i + 1, data_loader_test_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=False)
                 # test(writer, name, i + 1, data_loader_train_split_dmp, model, criterion, len(data_loader_train_dmp), loss_stage, print_attention_map=True, train_split=True)
-        # if i > 1 and i <= 3:
-        #    loss_stage = 1
-        #elif i > 3:
-        #    loss_stage = 2
-        if i > 2:
+        if i >= 1 and i <= 2:
+            loss_stage = 1
+        elif i > 2:
             loss_stage = 2
+        # if i > 2:
+        #    loss_stage = 2
 
 
 if __name__ == '__main__':

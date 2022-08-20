@@ -450,6 +450,10 @@ class Backbone(nn.Module):
             requests_qs.append(self.requests_to_queries[i](self.requests[i]).unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1))
             requests_ks.append(self.requests_to_keys[i](self.requests[i]).unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1))
             requests_vs.append(self.requests_to_values[i](self.requests[i]).unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1))
+            ######################################
+            # Just for sanity check for freezing
+            # requests_qs
+            ######################################
         requests_qs = torch.cat(requests_qs, dim=1)
         requests_ks = torch.cat(requests_ks, dim=1)
         requests_vs = torch.cat(requests_vs, dim=1)
@@ -465,6 +469,13 @@ class Backbone(nn.Module):
         return last_subjective_part_query, last_subjective_part_key, last_subjective_part_value
 
     def _update_cortex_status_(self, last_state_embed, perception_query, perception_key, perception_value):
+        #########################
+        # Just for sanity check for freezing
+        #mask = np.ones(last_state_embed.shape, dtype=np.int32)
+        #mask[:, 5, :] = 0
+        #mask = torch.tensor(mask).to(self.device)
+        #last_state_embed = last_state_embed * mask
+        ########################
         last_subjective_part = last_state_embed[:, :6, :]
         # last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = self._status_embed_to_qkv_(last_subjective_part)
         last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = last_subjective_part, last_subjective_part, last_subjective_part
