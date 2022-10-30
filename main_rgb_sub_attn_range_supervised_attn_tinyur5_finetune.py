@@ -397,7 +397,7 @@ def main(writer, name, batch_size=96):
     save_ckpt = True
     supervised_attn = True
     curriculum_learning = True
-    ckpt = None
+    ckpt = '/data/Documents/yzhou298/ckpts/train-tinyur5-rgb-sub-attn-range-larger-dataset-corrected-rotation-on-original-dataset/580000.pth'
 
     # load model
     model = Backbone(img_size=224, embedding_size=256, num_traces_out=2, num_joints=8, num_weight_points=12, input_nc=3)
@@ -430,9 +430,12 @@ def main(writer, name, batch_size=96):
                                           shuffle=True, num_workers=8,
                                           collate_fn=pad_collate_xy_lang)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters())
+    optimizer.load_state_dict(ckpt_instance['optimizer'], strict=True)
+    
     criterion = nn.MSELoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
+    scheduler.step()
 
     print('loaded')
 
@@ -459,6 +462,6 @@ def main(writer, name, batch_size=96):
             loss_stage = 2
 
 if __name__ == '__main__':
-    name = 'train-tinyur5-rgb-sub-attn-range-larger-dataset-corrected-rotation-on-original-dataset'
+    name = 'train-tinyur5-rgb-sub-attn-range-larger-dataset-corrected-rotation-on-original-dataset-finetune'
     writer = SummaryWriter('runs/' + name)
     main(writer, name)

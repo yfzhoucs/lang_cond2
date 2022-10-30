@@ -33,7 +33,118 @@ class DMPDatasetEERandTarXYLang(Dataset):
         self.length_total = length_total
         self.trials = []
         self.lengths_index = []
-
+        self.verb_template = {
+            'push_forward': [
+                'push',
+                'drag',
+                'move',
+                'get',
+            ], 
+            'push_backward': [
+                'push',
+                'drag',
+                'move',
+                'get',
+            ], 
+            'push_left': [
+                'push',
+                'drag',
+                'move',
+                'get',
+            ],  
+            'push_right': [
+                'push',
+                'drag',
+                'move',
+                'get',
+            ],  
+            'rotate_clock': [
+                'rotate',
+                'revolve',
+                'turn',
+                'spin',
+            ],  
+            'rotate_counterclock': [
+                'rotate',
+                'revolve',
+                'turn',
+                'spin',
+            ], 
+        }
+        self.adv_template = {
+            'push_forward': [
+                'forward',
+                'to the front',
+                'ahead'
+            ], 
+            'push_backward': [
+                'backward',
+                'back',
+                'to the back',
+            ], 
+            'push_left': [
+                'to the left',
+                'left',
+                'to the left hand side',
+            ],  
+            'push_right': [
+                'to the right',
+                'right',
+                'to the right hand side',
+            ],  
+            'rotate_clock': [
+                'counterclockwise',
+                'anticlockwise',
+                'anti clock wise',
+                'counter clock wise',
+            ],  
+            'rotate_counterclock': [
+                'clockwise',
+                'clock wise'
+            ], 
+        }
+        self.np_template = {
+            'orange': [
+                'orange',
+                'citrus',
+                'sweet orange',
+                'lime'
+            ],
+            'apple': [
+                'apple',
+                'red apple',
+                'red delicious apple',
+                'gala'
+            ],
+            'tomato':[
+                'tomato'
+            ],
+            'strawberry':[
+                'strawberry'
+            ],
+            'watermelon':[
+                'watermelon'
+            ],
+            'banana':[
+                'banana'
+            ],
+            'milk_bottle':[
+                'bottle',
+                'glass bottle',
+                'milk bottle'
+            ],
+            'clock':[
+                'clock',
+                'timer',
+                'watch'
+            ],
+            'camera':[
+                'camera',
+                'DSLR',
+                'nikon',
+                'canon'
+            ]
+        }
 
         length = 0
         for trial in all_dirs:
@@ -56,6 +167,7 @@ class DMPDatasetEERandTarXYLang(Dataset):
             trial_dict['sentence'] = states_dict[0]['sentence']
             trial_dict['eef'] = np.asarray([states_dict[i]['eef'] for i in range(trial_dict['len'])])
             trial_dict['tar_obj'] = [states_dict[i]['task']['target'] for i in range(trial_dict['len'])]
+            trial_dict['task'] = [states_dict[i]['task']['action'] for i in range(trial_dict['len'])]
             trial_dict['obj_pos'] = [states_dict[i]['positions'] for i in range(trial_dict['len'])]
             
             # There are (trial_dict['len']) steps in the trial, which means (trial_dict['len'] + 1) states
@@ -72,6 +184,21 @@ class DMPDatasetEERandTarXYLang(Dataset):
             sin_cos_joints[i * 2 + 1] = np.cos(joints[i])
         return sin_cos_joints
 
+    def get_verb(self, verb):
+        return random.sample(self.verb_template[verb], 1)[0]
+    
+    def get_adv(self, verb):
+        return random.sample(self.adv_template[verb], 1)[0]
+
+    def get_np(self, noun):
+        return random.sample(self.np_template[noun], 1)[0]
+
+    def get_sentence(self, target, action):
+        v = self.get_verb(action)
+        adv = self.get_adv(action)
+        np = self.get_np(target)
+        sentence = v + ' ' + np + ' ' + adv
+        return sentence
 
 
     def __len__(self):
@@ -90,7 +217,11 @@ class DMPDatasetEERandTarXYLang(Dataset):
                 / 255, dtype=torch.float32)
 
 
-        sentence = self.trials[trial_idx]['sentence']
+        # sentence = self.trials[trial_idx]['sentence']
+        # print(self.trials[trial_idx]['tar_obj'][step_idx])
+        # print(self.trials[trial_idx]['task'][step_idx])
+        # exit()
+        sentence = self.get_sentence(self.trials[trial_idx]['tar_obj'][step_idx], self.trials[trial_idx]['task'][step_idx])
         sentence = clip.tokenize([sentence])[0]
 
         # if self.normalize == 'separate':
